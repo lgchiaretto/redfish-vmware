@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+/var/log/ipmi-vmware-bridge.log
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Configuration files with sensitive data
+config/config.json.backup
+config/*.secret
+*.key
+*.pem
+
+# Runtime files
+*.pid
+*.out
+nohup.out
+
+# Archive temporary files  
+archive/tmp/
+
+# Test outputs
+test_results/
+coverage/
+.coverage
+.pytest_cache/
+
+# VMware specific
+*.vmx
+*.vmdk
+*.nvram

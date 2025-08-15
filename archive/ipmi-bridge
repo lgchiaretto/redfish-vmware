@@ -1,0 +1,318 @@
+#!/bin/bash
+
+# IPMI VMware Bridge Management Script
+# Provides easy management commands for the IPMI bridge service
+
+SERVICE_NAME="ipmi-vmware-bridge"
+CONFIG_FILE="/etc/ipmi-vmware-bridge/config.json"
+LOG_FILE="/var/log/ipmi-vmware-bridge.log"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+show_help() {
+    echo "IPMI VMware Bridge Management Script"
+    echo
+    echo "Usage: $0 <command> [options]"
+    echo
+    echo "Commands:"
+    echo "  start           Start the service"
+    echo "  stop            Stop the service"
+    echo "  restart         Restart the service"
+    echo "  status          Show service status"
+    echo "  logs            Show service logs"
+    echo "  follow-logs     Follow service logs in real-time"
+    echo "  test            Run connection tests"
+    echo "  config          Show current configuration"
+    echo "  list-vms        List configured VMs"
+    echo "  test-ipmi       Test IPMI connectivity for all VMs"
+    echo "  install         Install/reinstall the service"
+    echo "  uninstall       Uninstall the service"
+    echo
+    echo "Examples:"
+    echo "  $0 start                    # Start the service"
+    echo "  $0 logs -n 50              # Show last 50 log lines"
+    echo "  $0 test-ipmi test-vm-01    # Test specific VM"
+    echo
+}
+
+check_root() {
+    if [[ $EUID -ne 0 ]] && [[ "$1" =~ ^(start|stop|restart|install|uninstall)$ ]]; then
+        echo -e "${RED}Error:${NC} Command '$1' requires root privileges"
+        exit 1
+    fi
+}
+
+service_start() {
+    echo -e "${BLUE}Starting${NC} $SERVICE_NAME..."
+    systemctl start $SERVICE_NAME
+    if systemctl is-active --quiet $SERVICE_NAME; then
+        echo -e "${GREEN}Service started successfully${NC}"
+    else
+        echo -e "${RED}Failed to start service${NC}"
+        exit 1
+    fi
+}
+
+service_stop() {
+    echo -e "${BLUE}Stopping${NC} $SERVICE_NAME..."
+    systemctl stop $SERVICE_NAME
+    echo -e "${GREEN}Service stopped${NC}"
+}
+
+service_restart() {
+    echo -e "${BLUE}Restarting${NC} $SERVICE_NAME..."
+    systemctl restart $SERVICE_NAME
+    if systemctl is-active --quiet $SERVICE_NAME; then
+        echo -e "${GREEN}Service restarted successfully${NC}"
+    else
+        echo -e "${RED}Failed to restart service${NC}"
+        exit 1
+    fi
+}
+
+service_status() {
+    echo -e "${BLUE}Service Status:${NC}"
+    systemctl status $SERVICE_NAME --no-pager -l
+    echo
+    echo -e "${BLUE}Network Ports:${NC}"
+    netstat -ulpn 2>/dev/null | grep -E ":(62[3-9]|63[0-9])" | head -10
+}
+
+show_logs() {
+    if [[ -f "$LOG_FILE" ]]; then
+        echo -e "${BLUE}Application Logs:${NC}"
+        tail "$@" "$LOG_FILE"
+        echo
+    fi
+    
+    echo -e "${BLUE}Service Logs:${NC}"
+    journalctl -u $SERVICE_NAME --no-pager "$@"
+}
+
+follow_logs() {
+    echo -e "${BLUE}Following logs for $SERVICE_NAME (Ctrl+C to stop)...${NC}"
+    journalctl -u $SERVICE_NAME -f
+}
+
+show_config() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        echo -e "${BLUE}Current Configuration:${NC}"
+        cat "$CONFIG_FILE" | python3 -m json.tool 2>/dev/null || cat "$CONFIG_FILE"
+    else
+        echo -e "${RED}Configuration file not found: $CONFIG_FILE${NC}"
+    fi
+}
+
+list_vms() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        echo -e "${BLUE}Configured VMs:${NC}"
+        python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE') as f:
+        config = json.load(f)
+    for i, vm in enumerate(config.get('vms', []), 1):
+        print(f'{i:2d}. {vm[\"vm_name\"]:20} Port: {vm[\"ipmi_port\"]:4d} User: {vm[\"ipmi_user\"]}')
+except Exception as e:
+    print(f'Error reading config: {e}')
+"
+    else
+        echo -e "${RED}Configuration file not found: $CONFIG_FILE${NC}"
+    fi
+}
+
+test_connection() {
+    echo -e "${BLUE}Running connection tests...${NC}"
+    if [[ -f "test_installation.py" ]]; then
+        python3 test_installation.py
+    else
+        echo -e "${RED}Test script not found${NC}"
+        exit 1
+    fi
+}
+
+test_ipmi() {
+    local vm_name="$1"
+    
+    if ! command -v ipmitool &> /dev/null; then
+        echo -e "${RED}ipmitool not found. Install with: apt-get install ipmitool${NC}"
+        exit 1
+    fi
+    
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo -e "${RED}Configuration file not found: $CONFIG_FILE${NC}"
+        exit 1
+    fi
+    
+    echo -e "${BLUE}Testing IPMI connectivity...${NC}"
+    
+    python3 -c "
+import json
+import subprocess
+import sys
+
+try:
+    with open('$CONFIG_FILE') as f:
+        config = json.load(f)
+    
+    vms_to_test = []
+    if '$vm_name':
+        # Test specific VM
+        for vm in config.get('vms', []):
+            if vm['vm_name'] == '$vm_name':
+                vms_to_test.append(vm)
+                break
+        if not vms_to_test:
+            print(f'VM $vm_name not found in configuration')
+            sys.exit(1)
+    else:
+        # Test all VMs
+        vms_to_test = config.get('vms', [])
+    
+    for vm in vms_to_test:
+        print(f'Testing {vm[\"vm_name\"]} on port {vm[\"ipmi_port\"]}...')
+        
+        cmd = [
+            'ipmitool', '-I', 'lanplus',
+            '-H', 'localhost',
+            '-p', str(vm['ipmi_port']),
+            '-U', vm['ipmi_user'],
+            '-P', vm['ipmi_password'],
+            'chassis', 'status'
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                print(f'  ✓ {vm[\"vm_name\"]} - IPMI responding')
+                # Parse status
+                for line in result.stdout.split('\n'):
+                    if 'System Power' in line:
+                        print(f'    {line.strip()}')
+            else:
+                print(f'  ✗ {vm[\"vm_name\"]} - IPMI failed: {result.stderr.strip()}')
+        except subprocess.TimeoutExpired:
+            print(f'  ✗ {vm[\"vm_name\"]} - IPMI timeout')
+        except Exception as e:
+            print(f'  ✗ {vm[\"vm_name\"]} - Error: {e}')
+        
+        print()
+
+except Exception as e:
+    print(f'Error: {e}')
+    sys.exit(1)
+"
+}
+
+install_service() {
+    echo -e "${BLUE}Installing IPMI VMware Bridge...${NC}"
+    if [[ -f "configure-ipmi.sh" ]]; then
+        ./configure-ipmi.sh "$@"
+    else
+        echo -e "${RED}Installation script not found: configure-ipmi.sh${NC}"
+        exit 1
+    fi
+}
+
+uninstall_service() {
+    echo -e "${YELLOW}Uninstalling IPMI VMware Bridge...${NC}"
+    
+    # Stop service
+    if systemctl is-active --quiet $SERVICE_NAME; then
+        systemctl stop $SERVICE_NAME
+    fi
+    
+    # Disable service
+    if systemctl is-enabled --quiet $SERVICE_NAME; then
+        systemctl disable $SERVICE_NAME
+    fi
+    
+    # Remove service file
+    if [[ -f "/etc/systemd/system/$SERVICE_NAME.service" ]]; then
+        rm -f "/etc/systemd/system/$SERVICE_NAME.service"
+        systemctl daemon-reload
+    fi
+    
+    # Remove directories (ask for confirmation)
+    read -p "Remove installation directories? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        rm -rf "/opt/ipmi-vmware-bridge"
+        rm -rf "/etc/ipmi-vmware-bridge"
+        echo -e "${GREEN}Directories removed${NC}"
+    fi
+    
+    # Remove user (ask for confirmation)
+    if getent passwd ipmi > /dev/null 2>&1; then
+        read -p "Remove service user 'ipmi'? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            userdel ipmi
+            echo -e "${GREEN}User removed${NC}"
+        fi
+    fi
+    
+    echo -e "${GREEN}Uninstallation completed${NC}"
+}
+
+# Main script
+case "$1" in
+    start)
+        check_root "$1"
+        service_start
+        ;;
+    stop)
+        check_root "$1"
+        service_stop
+        ;;
+    restart)
+        check_root "$1"
+        service_restart
+        ;;
+    status)
+        service_status
+        ;;
+    logs)
+        shift
+        show_logs "$@"
+        ;;
+    follow-logs)
+        follow_logs
+        ;;
+    config)
+        show_config
+        ;;
+    list-vms)
+        list_vms
+        ;;
+    test)
+        test_connection
+        ;;
+    test-ipmi)
+        shift
+        test_ipmi "$@"
+        ;;
+    install)
+        check_root "$1"
+        shift
+        install_service "$@"
+        ;;
+    uninstall)
+        check_root "$1"
+        uninstall_service
+        ;;
+    help|--help|-h)
+        show_help
+        ;;
+    *)
+        echo -e "${RED}Unknown command: $1${NC}"
+        echo
+        show_help
+        exit 1
+        ;;
+esac

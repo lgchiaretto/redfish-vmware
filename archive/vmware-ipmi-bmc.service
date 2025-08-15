@@ -1,0 +1,21 @@
+[Unit]
+Description=VMware IPMI BMC Server
+Documentation=https://github.com/pyghmi/pyghmi
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/home/lchiaret/git/ipmi-vmware
+ExecStart=/usr/bin/python3 /home/lchiaret/git/ipmi-vmware/vmware_ipmi_bmc.py
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vmware-ipmi-bmc
+
+[Install]
+WantedBy=multi-user.target

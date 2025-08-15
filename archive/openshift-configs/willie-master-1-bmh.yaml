@@ -1,0 +1,27 @@
+---
+apiVersion: metal3.io/v1alpha1
+kind: BareMetalHost
+metadata:
+  name: willie-master-1
+  namespace: openshift-machine-api
+spec:
+  online: true
+  bootMACAddress: "52:54:00:15:66:e1"
+  bmc:
+    address: ipmi://192.168.86.51:623
+    credentialsName: willie-master-1-bmc-secret
+    disableCertificateVerification: true
+  externallyProvisioned: true
+  networkData:
+    name: willie-master-1-network-data
+    namespace: openshift-machine-api
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: willie-master-1-bmc-secret
+  namespace: openshift-machine-api
+type: Opaque
+data:
+  username: YWRtaW4=
+  password: YWRtaW4=

@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""
+IPMI VMware Bridge - Main Entry Point
+This script provides a clean interface to start the IPMI bridge service.
+"""
+
+import sys
+import os
+
+# Add src directory to path
+src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')
+sys.path.insert(0, src_path)
+
+# Import and run the main bridge
+from ipmi_bridge import main
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n🛑 Bridge stopped by user")
+        sys.exit(0)
+    except Exception as e:
+        print(f"💥 Fatal error: {e}")
+        sys.exit(1)
