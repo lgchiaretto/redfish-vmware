@@ -205,9 +205,8 @@ EOF
 echo ""
 echo -e "${GREEN}🎉 IPMI VMware Bridge setup completed successfully!${NC}"
 echo -e "${BLUE}📡 Ready to receive IPMI calls from OpenShift Virtualization${NC}"
-    print_info "Debug mode is ENABLED by default for OpenShift troubleshooting"
-    print_info "Set IPMI_DEBUG=false to disable verbose logging"
-}
+print_info "Debug mode is ENABLED by default for OpenShift troubleshooting"
+print_info "Set IPMI_DEBUG=false to disable verbose logging"
 
 # Command line options
 case "${1:-}" in
@@ -220,8 +219,5 @@ case "${1:-}" in
         ;;
     "deps")
         install_dependencies
-        ;;
-    *)
-        main
         ;;
 esac

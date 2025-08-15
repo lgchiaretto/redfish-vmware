@@ -23,7 +23,6 @@ Um bridge IPMI que permite ao OpenShift Virtualization controlar VMs VMware como
 ├── src/
 │   ├── ipmi_bridge.py      # Implementação principal do bridge IPMI
 │   ├── vmware_client.py    # Cliente para integração com VMware vSphere
-│   └── set_bios_mode.py    # Utilitários para configuração de BIOS
 ├── config/
 │   ├── config.json         # Configuração principal
 │   ├── config_fixed.json   # Configuração alternativa

@@ -32,7 +32,7 @@ SyslogIdentifier=ipmi-vmware-bridge
 # Environment variables
 Environment=PYTHONPATH=/home/lchiaret/git/ipmi-vmware/src
 Environment=PYTHONUNBUFFERED=1
-Environment=IPMI_DEBUG=false
+Environment=IPMI_DEBUG=true
 
 [Install]
 WantedBy=multi-user.target

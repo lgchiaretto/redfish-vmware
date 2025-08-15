@@ -42,6 +42,15 @@
       "port": 626,
       "ipmi_user": "admin",
       "ipmi_password": "password"
+    },
+    {
+      "name": "skinner-worker-2",
+      "vcenter_host": "chiaretto-vcsa01.chiaret.to",
+      "vcenter_user": "administrator@chiaretto.local",
+      "vcenter_password": "VMware1!VMware1!",
+      "port": 627,
+      "ipmi_user": "admin",
+      "ipmi_password": "password"
     }
   ],
   "iso_repository": {
