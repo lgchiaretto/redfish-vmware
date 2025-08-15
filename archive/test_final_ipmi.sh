@@ -13,7 +13,7 @@ echo
 
 # Testar status das VMs
 echo "2. Testando status de todas as VMs:"
-echo "   VM willie-master-0 (porta 623):"
+echo "   VM skinner-master-0 (porta 623):"
 ipmitool -I lanplus -H localhost -p 623 -U admin -P password power status
 echo "   VM rhel8-10-1 (porta 624):"
 ipmitool -I lanplus -H localhost -p 624 -U admin -P password power status  
@@ -33,14 +33,14 @@ echo
 
 # Testar power operations
 echo "5. Testando operações de power:"
-echo "   Ligando VM willie-master-0..."
+echo "   Ligando VM skinner-master-0..."
 ipmitool -I lanplus -H localhost -p 623 -U admin -P password power on
 sleep 3
 echo "   Status após power on:"
 ipmitool -I lanplus -H localhost -p 623 -U admin -P password power status
 echo
 
-echo "   Desligando VM willie-master-0..."
+echo "   Desligando VM skinner-master-0..."
 ipmitool -I lanplus -H localhost -p 623 -U admin -P password power off
 sleep 3
 echo "   Status após power off:"
@@ -56,7 +56,7 @@ echo "=== TESTE CONCLUÍDO COM SUCESSO! ==="
 echo "O IPMI VMware Bridge está funcionando perfeitamente!"
 echo
 echo "Como usar:"
-echo "- Para VM willie-master-0: ipmitool -I lanplus -H localhost -p 623 -U admin -P password <comando>"
+echo "- Para VM skinner-master-0: ipmitool -I lanplus -H localhost -p 623 -U admin -P password <comando>"
 echo "- Para VM rhel8-10-1:     ipmitool -I lanplus -H localhost -p 624 -U admin -P password <comando>"
 echo "- Para VM NFS:            ipmitool -I lanplus -H localhost -p 625 -U admin -P password <comando>"
 echo

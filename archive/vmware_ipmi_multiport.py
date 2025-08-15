@@ -117,9 +117,9 @@ def main():
     
     # VM configurations - different ports to avoid conflicts
     vm_configs = [
-        ('willie-master-0', 623),  # Standard IPMI port
-        ('willie-master-1', 624),  # IPMI + 1  
-        ('willie-master-2', 625),  # IPMI + 2
+        ('skinner-master-0', 623),  # Standard IPMI port
+        ('skinner-master-1', 624),  # IPMI + 1  
+        ('skinner-master-2', 625),  # IPMI + 2
     ]
     
     threads = []
@@ -143,11 +143,11 @@ def main():
         
         logger.info(f"✅ Started {len(vm_configs)} BMC instances")
         logger.info("🔧 Test with:")
-        logger.info("  # willie-master-0:")
+        logger.info("  # skinner-master-0:")
         logger.info("  ipmitool -I lanplus -H <ANY_IP> -p 623 -U admin -P password chassis power status")
-        logger.info("  # willie-master-1:")
+        logger.info("  # skinner-master-1:")
         logger.info("  ipmitool -I lanplus -H <ANY_IP> -p 624 -U admin -P password chassis power status")
-        logger.info("  # willie-master-2:")
+        logger.info("  # skinner-master-2:")
         logger.info("  ipmitool -I lanplus -H <ANY_IP> -p 625 -U admin -P password chassis power status")
         
         logger.info("🛑 Press Ctrl+C to stop")

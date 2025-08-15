@@ -123,9 +123,9 @@ def main():
     
     # VM to IP mappings
     vm_configs = [
-        ('192.168.86.50', 'willie-master-0', 623),
-        ('192.168.86.51', 'willie-master-1', 624),  # Different ports
-        ('192.168.86.52', 'willie-master-2', 625),  # to avoid conflicts
+        ('192.168.86.50', 'skinner-master-0', 623),
+        ('192.168.86.51', 'skinner-master-1', 624),  # Different ports
+        ('192.168.86.52', 'skinner-master-2', 625),  # to avoid conflicts
     ]
     
     threads = []

@@ -112,11 +112,11 @@ Testing power control...
 ### Mapeamento de VMs:
 ```python
 # Cliente IP → VM Name
-'192.168.110.50': 'willie-master-0'    # OpenShift Master 0
-'192.168.110.51': 'willie-master-1'    # OpenShift Master 1  
-'192.168.110.52': 'willie-master-2'    # OpenShift Master 2
-'127.0.0.1': 'willie-master-0'         # Localhost testing
-'::ffff:127.0.0.1': 'willie-master-0'  # IPv6-mapped localhost
+'192.168.110.50': 'skinner-master-0'    # OpenShift Master 0
+'192.168.110.51': 'skinner-master-1'    # OpenShift Master 1  
+'192.168.110.52': 'skinner-master-2'    # OpenShift Master 2
+'127.0.0.1': 'skinner-master-0'         # Localhost testing
+'::ffff:127.0.0.1': 'skinner-master-0'  # IPv6-mapped localhost
 ```
 
 ## 📝 Monitoramento
@@ -137,8 +137,8 @@ sudo journalctl -u vmware-ipmi-bmc.service --since "1 hour ago"
 ```
 Aug 13 02:13:40 bastion vmware-ipmi-bmc[819566]: 🚀 VMware IPMI BMC started on port 623
 Aug 13 02:13:40 bastion vmware-ipmi-bmc[819566]: 📋 VM mappings configured: 7 IPs
-Aug 13 02:14:40 bastion vmware-ipmi-bmc[819566]: 🔍 Client ::ffff:127.0.0.1 -> VM willie-master-0
-Aug 13 02:14:40 bastion vmware-ipmi-bmc[819566]: ⚡ Power OFF executed for willie-master-0
+Aug 13 02:14:40 bastion vmware-ipmi-bmc[819566]: 🔍 Client ::ffff:127.0.0.1 -> VM skinner-master-0
+Aug 13 02:14:40 bastion vmware-ipmi-bmc[819566]: ⚡ Power OFF executed for skinner-master-0
 ```
 
 ## 🔄 Características do Serviço

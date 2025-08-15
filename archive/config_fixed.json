@@ -8,7 +8,7 @@
   },
   "vms": [
     {
-      "name": "willie-master-0",
+      "name": "skinner-master-0",
       "vcenter_host": "chiaretto-vcsa01.chiaret.to",
       "vcenter_user": "administrator@chiaretto.local",
       "vcenter_password": "VMware1!VMware1!",

@@ -54,7 +54,7 @@ Edite o arquivo `config/config.json` com suas credenciais VMware e VMs:
   },
   "vms": [
     {
-      "name": "willie-master-0",
+      "name": "skinner-master-0",
       "vcenter_host": "seu-vcenter.local",
       "vcenter_user": "administrator@seu-dominio.local",
       "vcenter_password": "sua-senha",
@@ -106,10 +106,10 @@ sudo systemctl status ipmi-vmware-bridge
 🚀 Starting IPMI VMware Bridge Service (IPv4 only)
 ✅ Running as root - can bind to IPMI standard ports
 📡 Ready to receive IPMI calls from OpenShift Virtualization
-🎯 IPMI REQUEST from OpenShift/BMH at 192.168.1.100:45678 → VM willie-master-0
-🟢 OpenShift requesting POWER ON for VM: willie-master-0
-⚡ Executing VMware power on for VM: willie-master-0
-✅ VM willie-master-0 powered on successfully - OpenShift notified
+🎯 IPMI REQUEST from OpenShift/BMH at 192.168.1.100:45678 → VM skinner-master-0
+🟢 OpenShift requesting POWER ON for VM: skinner-master-0
+⚡ Executing VMware power on for VM: skinner-master-0
+✅ VM skinner-master-0 powered on successfully - OpenShift notified
 ```
 
 ### Monitorar Logs
@@ -131,10 +131,10 @@ Com debug habilitado, você verá logs como:
 ```
 🚀 Starting IPMI VMware Bridge Service
 📡 This bridge will receive IPMI calls from OpenShift Virtualization BMH
-🎯 IPMI REQUEST from OpenShift/BMH at 192.168.1.100:12345 → VM willie-master-0
-🟢 OpenShift requesting POWER ON for VM: willie-master-0
-⚡ Executing VMware power on for VM: willie-master-0
-✅ VM willie-master-0 powered on successfully - OpenShift notified
+🎯 IPMI REQUEST from OpenShift/BMH at 192.168.1.100:12345 → VM skinner-master-0
+🟢 OpenShift requesting POWER ON for VM: skinner-master-0
+⚡ Executing VMware power on for VM: skinner-master-0
+✅ VM skinner-master-0 powered on successfully - OpenShift notified
 ```
 
 ### Monitorar Logs
@@ -155,11 +155,11 @@ sudo journalctl -u ipmi-vmware-bridge -f
 apiVersion: metal3.io/v1alpha1
 kind: BareMetalHost
 metadata:
-  name: willie-master-0
+  name: skinner-master-0
 spec:
   bmc:
     address: ipmi://192.168.1.10:623
-    credentialsName: willie-master-0-bmc-secret
+    credentialsName: skinner-master-0-bmc-secret
   bootMACAddress: "00:50:56:xx:xx:xx"
   online: true
 ```
@@ -170,7 +170,7 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: willie-master-0-bmc-secret
+  name: skinner-master-0-bmc-secret
 type: Opaque
 data:
   username: YWRtaW4=  # admin

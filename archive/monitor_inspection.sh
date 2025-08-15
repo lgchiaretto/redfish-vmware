@@ -1,15 +1,15 @@
 #!/bin/bash
 
-echo "🔍 Monitoring willie-worker-1 inspection progress..."
+echo "🔍 Monitoring skinner-worker-1 inspection progress..."
 echo "==========================================="
 
 while true; do
     echo "⏰ $(date)"
     
     # Get BareMetalHost status
-    BMH_STATUS=$(oc get baremetalhosts willie-worker-1 -n openshift-machine-api -o jsonpath='{.status.provisioning.state}')
-    BMH_POWERED=$(oc get baremetalhosts willie-worker-1 -n openshift-machine-api -o jsonpath='{.status.poweredOn}')
-    BMH_ERROR=$(oc get baremetalhosts willie-worker-1 -n openshift-machine-api -o jsonpath='{.status.errorMessage}')
+    BMH_STATUS=$(oc get baremetalhosts skinner-worker-1 -n openshift-machine-api -o jsonpath='{.status.provisioning.state}')
+    BMH_POWERED=$(oc get baremetalhosts skinner-worker-1 -n openshift-machine-api -o jsonpath='{.status.poweredOn}')
+    BMH_ERROR=$(oc get baremetalhosts skinner-worker-1 -n openshift-machine-api -o jsonpath='{.status.errorMessage}')
     
     echo "📊 State: $BMH_STATUS | Powered: $BMH_POWERED"
     

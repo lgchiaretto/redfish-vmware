@@ -28,6 +28,13 @@ else
     SYSTEMD_SETUP=false
 fi
 
+
+print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+
 # Function to run command with sudo if needed
 run_sudo() {
     if [[ $EUID -eq 0 ]]; then
@@ -178,17 +185,17 @@ cat << 'EOF'
 apiVersion: metal3.io/v1alpha1
 kind: BareMetalHost
 metadata:
-  name: willie-master-0
+  name: skinner-master-0
 spec:
   bmc:
     address: ipmi://127.0.0.1:623
-    credentialsName: willie-master-0-bmc-secret
+    credentialsName: skinner-master-0-bmc-secret
   bootMACAddress: "00:50:56:xx:xx:xx"
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: willie-master-0-bmc-secret
+  name: skinner-master-0-bmc-secret
 type: Opaque
 data:
   username: YWRtaW4=  # admin

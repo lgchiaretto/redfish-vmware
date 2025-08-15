@@ -7,7 +7,7 @@ echo "Data: $(date)"
 echo
 
 VM_PORT=623
-VM_NAME="willie-master-0"
+VM_NAME="skinner-master-0"
 ISO_PATH="ISOs/rhel-8.10-x86_64-dvd.iso"
 DATASTORE="datastore1"
 

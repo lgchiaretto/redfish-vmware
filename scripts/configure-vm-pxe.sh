@@ -26,7 +26,7 @@ usage() {
     echo "  VCENTER_PASS - vCenter password"
     echo
     echo "Example:"
-    echo "  VCENTER_HOST=vcenter.lab.com VCENTER_USER=admin VCENTER_PASS=password $0 willie-worker-1"
+    echo "  VCENTER_HOST=vcenter.lab.com VCENTER_USER=admin VCENTER_PASS=password $0 skinner-worker-1"
     exit 1
 }
 

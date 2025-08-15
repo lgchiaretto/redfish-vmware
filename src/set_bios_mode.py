@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def main():
-    """Set willie-worker-1 to legacy BIOS mode"""
+    """Set skinner-worker-1 to legacy BIOS mode"""
     try:
         # Load configuration
         with open('config.json', 'r') as f:
@@ -29,8 +29,8 @@ def main():
             disable_ssl=vmware_config.get('disable_ssl', True)
         )
         
-        # Set willie-worker-1 firmware to EFI
-        vm_name = 'willie-worker-1'
+        # Set skinner-worker-1 firmware to EFI
+        vm_name = 'skinner-worker-1'
         logger.info(f"Setting {vm_name} firmware to EFI...")
         
         result = client.set_vm_firmware(vm_name, 'efi')

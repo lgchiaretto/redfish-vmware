@@ -17,31 +17,31 @@ class VMwareIPMIBMC(bmc.Bmc):
         
         # VM mappings: Client IP -> VM Name (include IPv6-mapped IPv4)
         self.vm_mapping = {
-            '192.168.86.50': 'willie-master-0',
-            '192.168.86.51': 'willie-master-1', 
-            '192.168.86.52': 'willie-master-2',
-            '192.168.86.168': 'willie-master-0',  # Local testing
-            '192.168.110.50': 'willie-master-0',  # OpenShift network
-            '192.168.110.51': 'willie-master-1',
-            '192.168.110.52': 'willie-master-2',
-            '127.0.0.1': 'willie-master-0',       # Localhost testing
-            '::ffff:127.0.0.1': 'willie-master-0', # IPv6-mapped localhost
-            '::ffff:192.168.86.168': 'willie-master-0', # IPv6-mapped local IP
-            '::1': 'willie-master-0'              # IPv6 localhost
+            '192.168.86.50': 'skinner-master-0',
+            '192.168.86.51': 'skinner-master-1', 
+            '192.168.86.52': 'skinner-master-2',
+            '192.168.86.168': 'skinner-master-0',  # Local testing
+            '192.168.110.50': 'skinner-master-0',  # OpenShift network
+            '192.168.110.51': 'skinner-master-1',
+            '192.168.110.52': 'skinner-master-2',
+            '127.0.0.1': 'skinner-master-0',       # Localhost testing
+            '::ffff:127.0.0.1': 'skinner-master-0', # IPv6-mapped localhost
+            '::ffff:192.168.86.168': 'skinner-master-0', # IPv6-mapped local IP
+            '::1': 'skinner-master-0'              # IPv6 localhost
         }
         
         # VM Power states: VM Name -> State
         self.vm_power_states = {
-            'willie-master-0': 'on',
-            'willie-master-1': 'on',
-            'willie-master-2': 'on'
+            'skinner-master-0': 'on',
+            'skinner-master-1': 'on',
+            'skinner-master-2': 'on'
         }
         
         # VM Boot devices: VM Name -> Boot Device
         self.vm_boot_devices = {
-            'willie-master-0': 'default',
-            'willie-master-1': 'default', 
-            'willie-master-2': 'default'
+            'skinner-master-0': 'default',
+            'skinner-master-1': 'default', 
+            'skinner-master-2': 'default'
         }
         
         # Default fallback state (for unknown IPs)
@@ -74,7 +74,7 @@ class VMwareIPMIBMC(bmc.Bmc):
             
             if not target_session:
                 self.logger.warning("❓ No session available, using default VM")
-                return 'willie-master-0'
+                return 'skinner-master-0'
             
             # Try to get client IP from session
             client_ip = None
@@ -92,11 +92,11 @@ class VMwareIPMIBMC(bmc.Bmc):
                 return vm_name
             
             self.logger.warning(f"❓ Unknown client IP {client_ip}, using default VM")
-            return 'willie-master-0'  # Default fallback
+            return 'skinner-master-0'  # Default fallback
             
         except Exception as e:
             self.logger.error(f"❌ Error getting VM for session: {e}")
-            return 'willie-master-0'
+            return 'skinner-master-0'
     
     def get_boot_device(self):
         """Get boot device for specific VM"""

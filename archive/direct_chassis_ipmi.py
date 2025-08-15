@@ -18,13 +18,13 @@ class DirectChassisIPMI:
         
         # VM mappings
         self.vm_mapping = {
-            '192.168.86.50': 'willie-master-0',
-            '192.168.86.51': 'willie-master-1', 
-            '192.168.86.52': 'willie-master-2',
-            '192.168.86.168': 'willie-master-0',  # Local testing
-            '192.168.110.50': 'willie-master-0',  # OpenShift
-            '192.168.110.51': 'willie-master-1',
-            '192.168.110.52': 'willie-master-2'
+            '192.168.86.50': 'skinner-master-0',
+            '192.168.86.51': 'skinner-master-1', 
+            '192.168.86.52': 'skinner-master-2',
+            '192.168.86.168': 'skinner-master-0',  # Local testing
+            '192.168.110.50': 'skinner-master-0',  # OpenShift
+            '192.168.110.51': 'skinner-master-1',
+            '192.168.110.52': 'skinner-master-2'
         }
         
         # Setup logging

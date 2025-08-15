@@ -48,9 +48,9 @@ echo "  sudo journalctl -u ipmi-vmware-bridge --since '10 minutes ago'  # Logs r
 
 echo
 echo "📋 Configuração para OpenShift:"
-echo "  BMC Address: ipmi://192.168.86.50:623 (para willie-master-0)"
-echo "  BMC Address: ipmi://192.168.86.51:623 (para willie-master-1)"  
-echo "  BMC Address: ipmi://192.168.86.52:623 (para willie-master-2)"
+echo "  BMC Address: ipmi://192.168.86.50:623 (para skinner-master-0)"
+echo "  BMC Address: ipmi://192.168.86.51:623 (para skinner-master-1)"  
+echo "  BMC Address: ipmi://192.168.86.52:623 (para skinner-master-2)"
 echo "  Username: admin"
 echo "  Password: admin"
 echo

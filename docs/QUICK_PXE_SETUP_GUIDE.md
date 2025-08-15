@@ -3,7 +3,7 @@
 ## Situação Atual
 - ✅ IPMI Bridge funcionando (4 nodes)
 - ✅ OpenShift cluster na rede **192.168.110.0/24**
-- ✅ willie-worker-1 preso em "inspecting" (precisa PXE boot)
+- ✅ skinner-worker-1 preso em "inspecting" (precisa PXE boot)
 
 ## Solução: PXE Server na Rede 110
 
@@ -33,8 +33,8 @@ sudo ./scripts/setup-pxe-infrastructure.sh
 
 ### Passo 3: Configurar VM para PXE Boot
 ```bash
-# Configura willie-worker-1 para fazer PXE boot
-./scripts/configure-vm-pxe.sh willie-worker-1
+# Configura skinner-worker-1 para fazer PXE boot
+./scripts/configure-vm-pxe.sh skinner-worker-1
 ```
 
 **O que faz:**
@@ -45,7 +45,7 @@ sudo ./scripts/setup-pxe-infrastructure.sh
 ### Passo 4: Monitorar Inspeção
 ```bash
 # Monitora o progresso da inspeção
-oc get baremetalhosts willie-worker-1 -n openshift-machine-api -w
+oc get baremetalhosts skinner-worker-1 -n openshift-machine-api -w
 
 # Verifica logs do Metal3
 oc logs -n openshift-machine-api deployment/metal3-baremetal-operator -f
@@ -114,7 +114,7 @@ sudo journalctl -f -u dnsmasq
 
 ## Após Sucesso
 
-Uma vez que willie-worker-1 complete a inspeção:
+Uma vez que skinner-worker-1 complete a inspeção:
 - Status mudará para "available"
 - Poderá ser provisionado normalmente
 - Mesmo processo serve para novos nodes

@@ -197,10 +197,10 @@ show_help() {
     echo ""
     echo "Examples:"
     echo "  $0 status"
-    echo "  $0 add 192.168.110.50 willie-master-0"
+    echo "  $0 add 192.168.110.50 skinner-master-0"
     echo "  $0 test 192.168.86.168"
     echo "  $0 monitor"
-    echo "  $0 generate willie-master-0"
+    echo "  $0 generate skinner-master-0"
 }
 
 # Main

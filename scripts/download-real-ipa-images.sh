@@ -163,7 +163,7 @@ main() {
     echo -e "${YELLOW}Next steps:${NC}"
     echo -e "1. Test PXE boot with: ipmitool -I lanplus -H 192.168.110.71 -p 626 -U admin -P password power reset"
     echo -e "2. Monitor with: sudo journalctl -u dnsmasq -f"
-    echo -e "3. Check BareMetalHost status: oc get baremetalhosts willie-worker-1 -n openshift-machine-api"
+    echo -e "3. Check BareMetalHost status: oc get baremetalhosts skinner-worker-1 -n openshift-machine-api"
 }
 
 # Set trap for cleanup

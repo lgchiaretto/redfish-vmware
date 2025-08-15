@@ -8,7 +8,7 @@
   },
   "vms": [
     {
-      "vm_name": "willie-master-0",
+      "vm_name": "skinner-master-0",
       "ipmi_address": "0.0.0.0",
       "ipmi_port": 623,
       "ipmi_user": "admin",

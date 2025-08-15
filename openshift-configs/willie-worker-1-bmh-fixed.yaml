@@ -1,13 +1,13 @@
 apiVersion: metal3.io/v1alpha1
 kind: BareMetalHost
 metadata:
-  name: willie-worker-1
+  name: skinner-worker-1
   namespace: openshift-machine-api
 spec:
   online: true
   bmc:
     address: ipmi://192.168.110.71:626
-    credentialsName: willie-worker-1-bmc-secret
+    credentialsName: skinner-worker-1-bmc-secret
   bootMACAddress: "00:50:56:9c:ff:83"
   bootMode: UEFI
   automatedCleaningMode: metadata

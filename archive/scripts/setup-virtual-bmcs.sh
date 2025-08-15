@@ -9,7 +9,7 @@ set -e
 INTERFACE="ens33"
 BASE_IP="192.168.86"
 BMC_IPS=("50" "51" "52")
-NODE_NAMES=("willie-master-0" "willie-master-1" "willie-master-2")
+NODE_NAMES=("skinner-master-0" "skinner-master-1" "skinner-master-2")
 
 echo "🔧 Setting up Virtual BMC IPs..."
 

@@ -14,27 +14,27 @@ class VMwareFakeBmc(bmc.Bmc):
     def __init__(self, authdata, port, address="0.0.0.0"):
         # VM mappings based on client IP  
         self.vm_mapping = {
-            '192.168.86.50': 'willie-master-0',
-            '192.168.86.51': 'willie-master-1', 
-            '192.168.86.52': 'willie-master-2',
-            '192.168.86.168': 'willie-master-0',  # Local testing
-            '192.168.110.50': 'willie-master-0',  # OpenShift
-            '192.168.110.51': 'willie-master-1',
-            '192.168.110.52': 'willie-master-2'
+            '192.168.86.50': 'skinner-master-0',
+            '192.168.86.51': 'skinner-master-1', 
+            '192.168.86.52': 'skinner-master-2',
+            '192.168.86.168': 'skinner-master-0',  # Local testing
+            '192.168.110.50': 'skinner-master-0',  # OpenShift
+            '192.168.110.51': 'skinner-master-1',
+            '192.168.110.52': 'skinner-master-2'
         }
         
         # Power states per VM
         self.powerstate = {
-            'willie-master-0': 'on',
-            'willie-master-1': 'on',
-            'willie-master-2': 'on'
+            'skinner-master-0': 'on',
+            'skinner-master-1': 'on',
+            'skinner-master-2': 'on'
         }
         
         # Boot devices per VM
         self.bootdevice = {
-            'willie-master-0': 'default',
-            'willie-master-1': 'default', 
-            'willie-master-2': 'default'
+            'skinner-master-0': 'default',
+            'skinner-master-1': 'default', 
+            'skinner-master-2': 'default'
         }
         
         # Setup logging
@@ -62,18 +62,18 @@ class VMwareFakeBmc(bmc.Bmc):
             if client_ip:
                 vm_name = self.vm_mapping.get(client_ip)
                 self.logger.debug(f"Session from {client_ip} -> VM {vm_name}")
-                return vm_name or 'willie-master-0'  # Default fallback
+                return vm_name or 'skinner-master-0'  # Default fallback
             
             self.logger.warning("Could not determine client IP from session, using default VM")
-            return 'willie-master-0'
+            return 'skinner-master-0'
             
         except Exception as e:
             self.logger.error(f"Error getting VM for session: {e}")
-            return 'willie-master-0'
+            return 'skinner-master-0'
     
     def get_power_state(self, session=None):
         """Get power state - modified to support VM-specific states"""
-        vm_name = self.get_vm_for_session(session) if session else 'willie-master-0'
+        vm_name = self.get_vm_for_session(session) if session else 'skinner-master-0'
         state = self.powerstate.get(vm_name, 'off')
         
         self.logger.info(f"🔋 Power state for {vm_name}: {state}")
@@ -81,7 +81,7 @@ class VMwareFakeBmc(bmc.Bmc):
     
     def set_power_state(self, powerstate, session=None):
         """Set power state - modified to support VM-specific control"""
-        vm_name = self.get_vm_for_session(session) if session else 'willie-master-0'
+        vm_name = self.get_vm_for_session(session) if session else 'skinner-master-0'
         
         self.logger.info(f"⚡ Power control for {vm_name}: {powerstate}")
         
@@ -107,7 +107,7 @@ class VMwareFakeBmc(bmc.Bmc):
     
     def get_boot_device(self, session=None):
         """Get boot device for VM"""
-        vm_name = self.get_vm_for_session(session) if session else 'willie-master-0'
+        vm_name = self.get_vm_for_session(session) if session else 'skinner-master-0'
         device = self.bootdevice.get(vm_name, 'default')
         
         self.logger.debug(f"💽 Boot device for {vm_name}: {device}")
@@ -115,7 +115,7 @@ class VMwareFakeBmc(bmc.Bmc):
     
     def set_boot_device(self, bootdevice, session=None):
         """Set boot device for VM"""
-        vm_name = self.get_vm_for_session(session) if session else 'willie-master-0'
+        vm_name = self.get_vm_for_session(session) if session else 'skinner-master-0'
         
         self.logger.info(f"💽 Set boot device for {vm_name}: {bootdevice}")
         self.bootdevice[vm_name] = bootdevice

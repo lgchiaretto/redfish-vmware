@@ -60,10 +60,10 @@ Este documento descreve a reorganização realizada no projeto para:
 ```log
 🚀 Starting IPMI VMware Bridge Service
 📡 Ready to receive IPMI calls from OpenShift Virtualization
-🎯 IPMI REQUEST from OpenShift/BMH at 192.168.1.100:45678 → VM willie-master-0
-🟢 OpenShift requesting POWER ON for VM: willie-master-0
-⚡ Executing VMware power on for VM: willie-master-0
-✅ VM willie-master-0 powered on successfully - OpenShift notified
+🎯 IPMI REQUEST from OpenShift/BMH at 192.168.1.100:45678 → VM skinner-master-0
+🟢 OpenShift requesting POWER ON for VM: skinner-master-0
+⚡ Executing VMware power on for VM: skinner-master-0
+✅ VM skinner-master-0 powered on successfully - OpenShift notified
 ```
 
 ### Como Usar o Debug
@@ -166,22 +166,22 @@ nano config/config.json
 
 ### 1. Visibilidade Completa
 ```log
-📨 IPMI RAW REQUEST from 192.168.1.100:54321 to VM willie-master-0
+📨 IPMI RAW REQUEST from 192.168.1.100:54321 to VM skinner-master-0
 🔍 Raw Request Data: 200018c86010011c
 📤 IPMI RAW RESPONSE to 192.168.1.100:54321: 200018c86001010000
 ```
 
 ### 2. Contexto de Operações
 ```log
-💾 OpenShift requesting boot device change for VM willie-master-0: disk → network
+💾 OpenShift requesting boot device change for VM skinner-master-0: disk → network
 🔄 Mapping IPMI device 'network' → VMware device 'network'
-✅ Boot device changed for VM willie-master-0: disk → network - OpenShift notified
+✅ Boot device changed for VM skinner-master-0: disk → network - OpenShift notified
 ```
 
 ### 3. Estado de VMs Monitorado
 ```log
-🔄 VM willie-master-0 power state changed: off → on
-📊 Reporting power state to OpenShift: VM willie-master-0 is on
+🔄 VM skinner-master-0 power state changed: off → on
+📊 Reporting power state to OpenShift: VM skinner-master-0 is on
 ```
 
 ## 🔒 Segurança e Manutenção

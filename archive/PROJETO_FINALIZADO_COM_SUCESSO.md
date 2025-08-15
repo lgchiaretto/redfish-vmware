@@ -38,7 +38,7 @@
 ### VMs Configuradas
 | VM Name | Porta IPMI | Comando de Teste |
 |---------|------------|------------------|
-| willie-master-0 | 623 | `ipmitool -I lanplus -H localhost -p 623 -U admin -P password power status` |
+| skinner-master-0 | 623 | `ipmitool -I lanplus -H localhost -p 623 -U admin -P password power status` |
 | rhel8-10-1 | 624 | `ipmitool -I lanplus -H localhost -p 624 -U admin -P password power status` |
 | NFS | 625 | `ipmitool -I lanplus -H localhost -p 625 -U admin -P password power status` |
 

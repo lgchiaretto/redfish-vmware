@@ -69,25 +69,25 @@ def main():
         class VMwareBMC(bmc.Bmc):
             def __init__(self, authdata, port=623, address="0.0.0.0"):
                 self.vm_mapping = {
-                    '192.168.86.50': 'willie-master-0',
-                    '192.168.86.51': 'willie-master-1', 
-                    '192.168.86.52': 'willie-master-2',
-                    '192.168.86.168': 'willie-master-0',
-                    '192.168.110.50': 'willie-master-0',
-                    '192.168.110.51': 'willie-master-1',
-                    '192.168.110.52': 'willie-master-2'
+                    '192.168.86.50': 'skinner-master-0',
+                    '192.168.86.51': 'skinner-master-1', 
+                    '192.168.86.52': 'skinner-master-2',
+                    '192.168.86.168': 'skinner-master-0',
+                    '192.168.110.50': 'skinner-master-0',
+                    '192.168.110.51': 'skinner-master-1',
+                    '192.168.110.52': 'skinner-master-2'
                 }
                 
                 self.power_states = {
-                    'willie-master-0': 'on',
-                    'willie-master-1': 'on', 
-                    'willie-master-2': 'on'
+                    'skinner-master-0': 'on',
+                    'skinner-master-1': 'on', 
+                    'skinner-master-2': 'on'
                 }
                 
                 self.boot_devices = {
-                    'willie-master-0': 'default',
-                    'willie-master-1': 'default', 
-                    'willie-master-2': 'default'
+                    'skinner-master-0': 'default',
+                    'skinner-master-1': 'default', 
+                    'skinner-master-2': 'default'
                 }
                 
                 self.logger = logging.getLogger('vmware_bmc')
@@ -113,9 +113,9 @@ def main():
             
             def get_power_state(self, session=None):
                 try:
-                    vm_name = self.get_vm_name_from_session(session) if session else 'willie-master-0'
+                    vm_name = self.get_vm_name_from_session(session) if session else 'skinner-master-0'
                     if not vm_name:
-                        vm_name = 'willie-master-0'
+                        vm_name = 'skinner-master-0'
                     
                     power_state = self.power_states.get(vm_name, 'off')
                     self.logger.info(f"🔋 Power state for {vm_name}: {power_state}")
@@ -126,9 +126,9 @@ def main():
             
             def set_power_state(self, powerstate, session=None):
                 try:
-                    vm_name = self.get_vm_name_from_session(session) if session else 'willie-master-0'
+                    vm_name = self.get_vm_name_from_session(session) if session else 'skinner-master-0'
                     if not vm_name:
-                        vm_name = 'willie-master-0'
+                        vm_name = 'skinner-master-0'
                     
                     self.logger.info(f"⚡ Power control for {vm_name}: {powerstate}")
                     
@@ -145,9 +145,9 @@ def main():
             
             def get_boot_device(self, session=None):
                 try:
-                    vm_name = self.get_vm_name_from_session(session) if session else 'willie-master-0'
+                    vm_name = self.get_vm_name_from_session(session) if session else 'skinner-master-0'
                     if not vm_name:
-                        vm_name = 'willie-master-0'
+                        vm_name = 'skinner-master-0'
                     return self.boot_devices.get(vm_name, 'default')
                 except Exception as e:
                     self.logger.error(f"Error getting boot device: {e}")
@@ -155,9 +155,9 @@ def main():
             
             def set_boot_device(self, bootdevice, session=None):
                 try:
-                    vm_name = self.get_vm_name_from_session(session) if session else 'willie-master-0'
+                    vm_name = self.get_vm_name_from_session(session) if session else 'skinner-master-0'
                     if not vm_name:
-                        vm_name = 'willie-master-0'
+                        vm_name = 'skinner-master-0'
                     self.logger.info(f"💽 Set boot device for {vm_name}: {bootdevice}")
                     self.boot_devices[vm_name] = bootdevice
                     return bootdevice

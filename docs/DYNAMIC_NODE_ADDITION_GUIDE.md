@@ -4,9 +4,9 @@
 This guide provides a complete solution for adding new bare metal nodes to your OpenShift cluster in a lab environment after installation.
 
 ## Current Status
-- ✅ IPMI Bridge: Working with 4 nodes (willie-master-0/1/2, willie-worker-1)
+- ✅ IPMI Bridge: Working with 4 nodes (skinner-master-0/1/2, skinner-worker-1)
 - ✅ Metal3/Ironic: Running and operational
-- ⚠️ **Issue**: willie-worker-1 stuck in "inspecting" state due to missing PXE infrastructure
+- ⚠️ **Issue**: skinner-worker-1 stuck in "inspecting" state due to missing PXE infrastructure
 
 ## Root Cause Analysis
 The node inspection fails because:
@@ -35,7 +35,7 @@ Configure your VMs to access the PXE network:
 
 #### Option A: Add Second Network Interface
 ```bash
-# Add a second network interface to willie-worker-1
+# Add a second network interface to skinner-worker-1
 # Connected to the same network as OpenShift cluster (192.168.110.x)
 # Set boot order: Network -> Hard Disk
 ```
@@ -53,12 +53,12 @@ Ensure the BareMetalHost can access the boot image:
 apiVersion: metal3.io/v1alpha1
 kind: BareMetalHost
 metadata:
-  name: willie-worker-1
+  name: skinner-worker-1
   namespace: openshift-machine-api
 spec:
   bmc:
     address: ipmi://192.168.1.100:626
-    credentialsName: willie-worker-1-bmc-secret
+    credentialsName: skinner-worker-1-bmc-secret
   bootMACAddress: "00:50:56:XX:XX:XX"  # VM's PXE network MAC
   online: true
 ```
@@ -162,7 +162,7 @@ For adding multiple nodes simultaneously:
 
 ## Success Criteria
 After successful setup, you should see:
-- ✅ willie-worker-1 transitions from "inspecting" to "available"
+- ✅ skinner-worker-1 transitions from "inspecting" to "available"
 - ✅ Hardware profile populated with VM specs
 - ✅ Node ready for MachineSet scaling or manual provisioning
 - ✅ Additional nodes can be added using the same process

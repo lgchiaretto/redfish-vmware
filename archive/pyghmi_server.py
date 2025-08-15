@@ -31,27 +31,27 @@ class VMwareBMC(bmc.Bmc):
     def __init__(self, authdata, port=623, address="0.0.0.0"):
         # VM mappings based on client IP
         self.vm_mapping = {
-            '192.168.86.50': 'willie-master-0',
-            '192.168.86.51': 'willie-master-1', 
-            '192.168.86.52': 'willie-master-2',
-            '192.168.86.168': 'willie-master-0',  # Local testing
-            '192.168.110.50': 'willie-master-0',  # OpenShift
-            '192.168.110.51': 'willie-master-1',
-            '192.168.110.52': 'willie-master-2'
+            '192.168.86.50': 'skinner-master-0',
+            '192.168.86.51': 'skinner-master-1', 
+            '192.168.86.52': 'skinner-master-2',
+            '192.168.86.168': 'skinner-master-0',  # Local testing
+            '192.168.110.50': 'skinner-master-0',  # OpenShift
+            '192.168.110.51': 'skinner-master-1',
+            '192.168.110.52': 'skinner-master-2'
         }
         
         # Current power states (cached)
         self.power_states = {
-            'willie-master-0': 'on',
-            'willie-master-1': 'on', 
-            'willie-master-2': 'on'
+            'skinner-master-0': 'on',
+            'skinner-master-1': 'on', 
+            'skinner-master-2': 'on'
         }
         
         # Boot devices
         self.boot_devices = {
-            'willie-master-0': 'default',
-            'willie-master-1': 'default', 
-            'willie-master-2': 'default'
+            'skinner-master-0': 'default',
+            'skinner-master-1': 'default', 
+            'skinner-master-2': 'default'
         }
         
         # Setup logging
@@ -85,10 +85,10 @@ class VMwareBMC(bmc.Bmc):
     def get_power_state(self, session=None):
         """Get power state for the VM associated with this session"""
         try:
-            vm_name = self.get_vm_name_from_session(session) if session else 'willie-master-0'
+            vm_name = self.get_vm_name_from_session(session) if session else 'skinner-master-0'
             if not vm_name:
                 self.logger.warning("No VM mapped for session, using default")
-                vm_name = 'willie-master-0'
+                vm_name = 'skinner-master-0'
             
             # Get current power state
             power_state = self.power_states.get(vm_name, 'off')
@@ -107,10 +107,10 @@ class VMwareBMC(bmc.Bmc):
     def set_power_state(self, powerstate, session=None):
         """Set power state for the VM associated with this session"""
         try:
-            vm_name = self.get_vm_name_from_session(session) if session else 'willie-master-0'
+            vm_name = self.get_vm_name_from_session(session) if session else 'skinner-master-0'
             if not vm_name:
                 self.logger.warning("No VM mapped for session, using default")
-                vm_name = 'willie-master-0'
+                vm_name = 'skinner-master-0'
             
             self.logger.info(f"⚡ Power control for {vm_name}: {powerstate}")
             
@@ -151,9 +151,9 @@ class VMwareBMC(bmc.Bmc):
     def get_boot_device(self, session=None):
         """Get boot device for the VM"""
         try:
-            vm_name = self.get_vm_name_from_session(session) if session else 'willie-master-0'
+            vm_name = self.get_vm_name_from_session(session) if session else 'skinner-master-0'
             if not vm_name:
-                vm_name = 'willie-master-0'
+                vm_name = 'skinner-master-0'
                 
             boot_device = self.boot_devices.get(vm_name, 'default')
             self.logger.debug(f"Get boot device for {vm_name}: {boot_device}")
@@ -167,9 +167,9 @@ class VMwareBMC(bmc.Bmc):
     def set_boot_device(self, bootdevice, session=None):
         """Set boot device for the VM"""
         try:
-            vm_name = self.get_vm_name_from_session(session) if session else 'willie-master-0'
+            vm_name = self.get_vm_name_from_session(session) if session else 'skinner-master-0'
             if not vm_name:
-                vm_name = 'willie-master-0'
+                vm_name = 'skinner-master-0'
                 
             self.logger.info(f"💽 Set boot device for {vm_name}: {bootdevice}")
             

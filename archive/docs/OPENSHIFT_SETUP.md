@@ -5,7 +5,7 @@ Para configurar o OpenShift para usar o IPMI-VMware Bridge, você precisa:
 ## 1. Identificar os IPs
 
 - **IPMI Bridge Server**: `192.168.86.168:623` (esta máquina)
-- **VM que será controlada**: `willie-master-0` (no vCenter)
+- **VM que será controlada**: `skinner-master-0` (no vCenter)
 - **IP do OpenShift cluster**: O IP de onde o OpenShift faz as requisições IPMI
 
 ## 2. Configurar VM Mapping
@@ -15,7 +15,7 @@ No arquivo `/opt/ipmi-vmware/config.ini`, adicione o mapeamento do IP do cluster
 ```ini
 [vm_mapping]
 # Mapeie o IP do cluster OpenShift para a VM desejada
-<IP_DO_OPENSHIFT_CLUSTER> = willie-master-0
+<IP_DO_OPENSHIFT_CLUSTER> = skinner-master-0
 ```
 
 ## 3. BareMetalHost YAML
@@ -26,20 +26,20 @@ Configure o BareMetalHost no OpenShift apontando para o IPMI Bridge:
 apiVersion: metal3.io/v1alpha1
 kind: BareMetalHost
 metadata:
-  name: willie-master-0
+  name: skinner-master-0
   namespace: openshift-machine-api
 spec:
   online: true
   bmc:
     address: ipmi://192.168.86.168:623
-    credentialsName: willie-master-0-bmc-secret
+    credentialsName: skinner-master-0-bmc-secret
   bootMACAddress: "00:50:56:xx:xx:xx"  # MAC da VM
   hardwareProfile: default
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: willie-master-0-bmc-secret
+  name: skinner-master-0-bmc-secret
   namespace: openshift-machine-api
 type: Opaque
 data:
@@ -96,7 +96,7 @@ Se aparecer erro "No VM mapped for IP X.X.X.X":
 ✅ RMCP Ping funcionando
 ✅ Chassis commands funcionando  
 ✅ Server ouvindo em 192.168.86.168:623
-✅ VM willie-master-0 mapeada para 192.168.110.50
+✅ VM skinner-master-0 mapeada para 192.168.110.50
 
 ## Próximos Passos
 
