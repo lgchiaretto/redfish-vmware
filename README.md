@@ -2,14 +2,19 @@
 
 Um bridge IPMI que permite ao OpenShift Virtualization controlar VMs VMware como se fossem servidores físicos através do protocolo IPMI.
 
+**⚠️ REQUISITOS:**
+- **Deve rodar como root** (portas IPMI padrão 623-626)
+- **IPv4 apenas** (sem suporte IPv6)
+- **VMware vSphere** configurado e acessível
+
 ## 🎯 Funcionalidades
 
-- **Protocolo IPMI completo** - Recebe comandos IPMI over LAN+ na porta 623
+- **Protocolo IPMI completo** - Recebe comandos IPMI over LAN+ nas portas 623-626
 - **Integração VMware vSphere** - Traduz comandos IPMI para chamadas da API do vSphere
 - **Multi-VM Support** - Suporta múltiplas VMs em portas diferentes
 - **OpenShift Ready** - Compatível com BareMetalHost (BMH) resources
 - **Debug Mode** - Logging detalhado de todas as chamadas IPMI
-- **ISO/CDROM Support** - Montagem de ISOs e boot por PXE
+- **IPv4 Only** - Configurado para usar apenas IPv4
 
 ## 📁 Estrutura do Projeto
 
@@ -64,28 +69,57 @@ Edite o arquivo `config/config.json` com suas credenciais VMware e VMs:
 ### 2. Executar o Bridge
 
 ```bash
-# Modo desenvolvimento (com debug habilitado)
-./ipmi-bridge
+# 🔥 Modo principal (portas IPMI padrão 623-626, APENAS como root)
+sudo ./ipmi-bridge
 
-# Ou diretamente com Python
-python3 src/ipmi_bridge.py
+# � Verificar configuração
+sudo ./ipmi-bridge --test-config
+
+# � Verificar se portas IPv4 estão livres
+sudo ./ipmi-bridge --check-ports
+
+# ⚙️ Usar configuração personalizada
+sudo ./ipmi-bridge --config /path/to/config.json
 ```
 
-### 3. Modo Debug
-
-Por padrão, o modo debug está **habilitado** para facilitar o troubleshooting com OpenShift. Para desabilitar:
+### 3. Instalar como Serviço
 
 ```bash
-export IPMI_DEBUG=false
-./ipmi-bridge
-```
+# Instalar serviço systemd
+sudo ./setup.sh
 
-### 4. Instalar como Serviço
-
-```bash
-sudo cp config/ipmi-vmware-bridge.service /etc/systemd/system/
-sudo systemctl enable ipmi-vmware-bridge
+# Iniciar serviço
 sudo systemctl start ipmi-vmware-bridge
+
+# Habilitar na inicialização
+sudo systemctl enable ipmi-vmware-bridge
+
+# Ver status
+sudo systemctl status ipmi-vmware-bridge
+```
+
+## 🔍 Debug e Monitoramento
+
+### Logs Detalhados (Debug habilitado por padrão)
+
+```
+🚀 Starting IPMI VMware Bridge Service (IPv4 only)
+✅ Running as root - can bind to IPMI standard ports
+📡 Ready to receive IPMI calls from OpenShift Virtualization
+🎯 IPMI REQUEST from OpenShift/BMH at 192.168.1.100:45678 → VM willie-master-0
+🟢 OpenShift requesting POWER ON for VM: willie-master-0
+⚡ Executing VMware power on for VM: willie-master-0
+✅ VM willie-master-0 powered on successfully - OpenShift notified
+```
+
+### Monitorar Logs
+
+```bash
+# Logs em tempo real
+sudo tail -f /var/log/ipmi-vmware-bridge.log
+
+# Ou via systemd
+sudo journalctl -u ipmi-vmware-bridge -f
 ```
 
 ## 🔍 Debug e Monitoramento

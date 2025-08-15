@@ -1,11 +1,24 @@
 #!/usr/bin/env python3
 """
 IPMI VMware Bridge - Main Entry Point
-This script provides a clean interface to start the IPMI bridge service.
+IPv4 only, requires root privileges for IPMI standard ports (623-626)
+
+Usage:
+  sudo ./ipmi-bridge                    # Normal mode (root required)
+  sudo ./ipmi-bridge --config /path/to/config.json
+  sudo ./ipmi-bridge --test-config
+  sudo ./ipmi-bridge --check-ports
 """
 
 import sys
 import os
+
+# Check if running as root
+if os.geteuid() != 0:
+    print("❌ This service must run as root")
+    print("🔒 IPMI protocol requires binding to privileged ports (623-626)")
+    print("💡 Run as root: sudo ./ipmi-bridge")
+    sys.exit(1)
 
 # Add src directory to path
 src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')

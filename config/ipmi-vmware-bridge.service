@@ -1,6 +1,6 @@
 [Unit]
-Description=IPMI VMware Bridge Service - OpenShift Virtualization Integration
-Documentation=https://github.com/your-repo/ipmi-vmware-bridge
+Description=IPMI VMware Bridge Service - OpenShift Virtualization
+Documentation=https://github.com/lchiaret/ipmi-vmware-bridge
 After=network.target network-online.target
 Wants=network-online.target
 
@@ -12,30 +12,27 @@ WorkingDirectory=/home/lchiaret/git/ipmi-vmware
 ExecStart=/usr/bin/python3 /home/lchiaret/git/ipmi-vmware/src/ipmi_bridge.py
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=process
-Restart=on-failure
-RestartSec=10
-TimeoutStartSec=30
+Restart=always
+RestartSec=5
+TimeoutStartSec=60
 TimeoutStopSec=30
 
-# Environment variables
-Environment=IPMI_DEBUG=true
-Environment=PYTHONPATH=/home/lchiaret/git/ipmi-vmware/src
-
-# Security settings
+# Security settings (relaxed for root execution)
 NoNewPrivileges=false
-PrivateTmp=true
-ProtectSystem=strict
+PrivateTmp=false
+ProtectSystem=false
 ProtectHome=false
 ReadWritePaths=/var/log /var/run /home/lchiaret/git/ipmi-vmware
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 # Logging
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=ipmi-vmware-bridge
-Environment=PYTHONPATH=/opt/ipmi-vmware-bridge
+
+# Environment variables
+Environment=PYTHONPATH=/home/lchiaret/git/ipmi-vmware/src
 Environment=PYTHONUNBUFFERED=1
+Environment=IPMI_DEBUG=true
 
 [Install]
 WantedBy=multi-user.target

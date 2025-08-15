@@ -18,8 +18,13 @@ import pyghmi.ipmi.bmc as bmc
 from vmware_client import VMwareClient
 
 # Configure logging with DEBUG level for detailed OpenShift communication tracking
-debug_enabled = os.getenv('IPMI_DEBUG', 'true').lower() == 'true'
+debug_env = os.getenv('IPMI_DEBUG', 'false').lower()
+debug_enabled = debug_env in ['true', '1', 'yes', 'on']
 log_level = logging.DEBUG if debug_enabled else logging.INFO
+
+print(f"🐛 Debug Environment Variable: IPMI_DEBUG={debug_env}")
+print(f"🐛 Debug Enabled: {debug_enabled}")
+print(f"🐛 Log Level: {log_level}")
 
 # Setup log file path - try multiple locations
 log_paths = [
@@ -64,9 +69,10 @@ else:
     logger.info("📋 PRODUCTION MODE - Limited logging enabled")
 
 class VMwareBMC(bmc.Bmc):
-    """VMware BMC implementation based on pyghmi Bmc with enhanced debugging"""
+    """VMware BMC implementation - IPv4 only, root required"""
     
     def __init__(self, authdata, port, vm_config):
+        # Initialize with standard parameters (IPv4 is default)
         super(VMwareBMC, self).__init__(authdata, port)
         self.vm_config = vm_config
         self.vm_name = vm_config['name']
@@ -75,7 +81,7 @@ class VMwareBMC(bmc.Bmc):
         
         # Set up BMC-specific logger
         self.logger = logging.getLogger(f"BMC-{self.vm_name}")
-        self.logger.info(f"🚀 Initializing BMC for VM: {self.vm_name} on port {port}")
+        self.logger.info(f"🚀 Initializing BMC for VM: {self.vm_name} on IPv4 port {port}")
         
         # Log authentication data (without passwords)
         auth_users = list(authdata.keys())
@@ -116,27 +122,50 @@ class VMwareBMC(bmc.Bmc):
     # Override BMC methods to add detailed logging for OpenShift communication
     def handle_raw_request(self, request, sockaddr):
         """Override to log all incoming IPMI requests from OpenShift"""
-        client_info = f"{sockaddr[0]}:{sockaddr[1]}" if sockaddr else "unknown"
-        self.logger.debug(f"📨 IPMI RAW REQUEST from {client_info} to VM {self.vm_name}")
-        self.logger.debug(f"🔍 Raw Request Data: {request.hex() if hasattr(request, 'hex') else str(request)}")
-        
         try:
+            # Extract client information safely
+            if hasattr(sockaddr, 'clientsockaddr') and sockaddr.clientsockaddr:
+                client_info = f"{sockaddr.clientsockaddr[0]}:{sockaddr.clientsockaddr[1]}"
+            elif isinstance(sockaddr, (list, tuple)) and len(sockaddr) >= 2:
+                client_info = f"{sockaddr[0]}:{sockaddr[1]}"
+            else:
+                client_info = "unknown"
+                
+            self.logger.debug(f"📨 IPMI RAW REQUEST from {client_info} to VM {self.vm_name}")
+            self.logger.debug(f"🔍 Raw Request Data: {request.hex() if hasattr(request, 'hex') else str(request)}")
+            
             response = super().handle_raw_request(request, sockaddr)
             self.logger.debug(f"📤 IPMI RAW RESPONSE to {client_info}: {response.hex() if hasattr(response, 'hex') else str(response)}")
             return response
         except Exception as e:
-            self.logger.error(f"❌ Error handling raw request from {client_info}: {e}")
-            raise
+            self.logger.error(f"❌ Error handling raw request: {e}")
+            return super().handle_raw_request(request, sockaddr)
 
     def handle_request(self, request, sockaddr):
         """Override to log structured IPMI requests"""
-        client_info = f"{sockaddr[0]}:{sockaddr[1]}" if sockaddr else "unknown"
-        self.logger.info(f"🎯 IPMI REQUEST from OpenShift/BMH at {client_info} → VM {self.vm_name}")
-        
-        # Log request details if available
-        if hasattr(request, 'command'):
-            self.logger.info(f"📋 Command: {request.command}")
-        if hasattr(request, 'netfn'):
+        try:
+            # Extract client information safely
+            if hasattr(sockaddr, 'clientsockaddr') and sockaddr.clientsockaddr:
+                client_info = f"{sockaddr.clientsockaddr[0]}:{sockaddr.clientsockaddr[1]}"
+            elif isinstance(sockaddr, (list, tuple)) and len(sockaddr) >= 2:
+                client_info = f"{sockaddr[0]}:{sockaddr[1]}"
+            else:
+                client_info = "unknown"
+                
+            self.logger.info(f"🎯 IPMI REQUEST from OpenShift/BMH at {client_info} → VM {self.vm_name}")
+            
+            # Log request details if available
+            if hasattr(request, 'command'):
+                self.logger.info(f"📋 Command: {request.command}")
+            if hasattr(request, 'netfn'):
+                self.logger.info(f"📋 NetFn: {request.netfn}")
+            
+            response = super().handle_request(request, sockaddr)
+            self.logger.info(f"✅ IPMI RESPONSE sent to OpenShift/BMH at {client_info}")
+            return response
+        except Exception as e:
+            self.logger.error(f"❌ Error handling request: {e}")
+            return super().handle_request(request, sockaddr)
             self.logger.info(f"📋 NetFN: {request.netfn}")
         if hasattr(request, 'data'):
             self.logger.debug(f"📋 Data: {request.data}")
@@ -360,15 +389,54 @@ class VMwareBMC(bmc.Bmc):
         logger.info(f"Cold reset requested for VM: {self.vm_name}")
         self.power_reset()
 
-def load_config():
+def check_port_availability(config):
+    """Check if configured ports are available on IPv4"""
+    import socket
+    
+    logger.info("🔍 Checking IPv4 port availability...")
+    
+    for vm_config in config.get('vms', []):
+        vm_name = vm_config.get('name', 'unknown')
+        port = vm_config.get('port', 623)
+        
+        try:
+            # Try to bind to the port on IPv4 only
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP for IPMI
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(('0.0.0.0', port))
+            sock.close()
+            
+            logger.info(f"✅ IPv4 Port {port} (VM: {vm_name}): Available")
+                
+        except PermissionError:
+            logger.error(f"❌ Port {port} (VM: {vm_name}): Permission denied (must run as root)")
+        except OSError as e:
+            if "Address already in use" in str(e):
+                logger.error(f"❌ Port {port} (VM: {vm_name}): Already in use")
+                # Try to find what's using the port
+                try:
+                    import subprocess
+                    result = subprocess.run(['netstat', '-tulpn'], capture_output=True, text=True)
+                    for line in result.stdout.split('\n'):
+                        if f':{port} ' in line:
+                            logger.info(f"📋 Port usage: {line.strip()}")
+                except:
+                    pass
+            else:
+                logger.error(f"❌ Port {port} (VM: {vm_name}): {e}")
+
+def load_config(config_file=None):
     """Load configuration from JSON file"""
-    # Try multiple config paths
-    config_paths = [
-        '/home/lchiaret/git/ipmi-vmware/config/config.json',  # New organized structure
-        '/opt/ipmi-vmware-bridge/config.json',               # Production path
-        'config/config.json',                                # Relative path
-        'config.json'                                        # Fallback
-    ]
+    # Try multiple config paths (production only)
+    if config_file:
+        config_paths = [config_file]
+    else:
+        config_paths = [
+            '/home/lchiaret/git/ipmi-vmware/config/config.json',  # Production config
+            '/opt/ipmi-vmware-bridge/config.json',               # Production path
+            'config/config.json',                                # Relative path
+            'config.json'                                        # Fallback
+        ]
     
     for config_path in config_paths:
         try:
@@ -376,6 +444,18 @@ def load_config():
                 with open(config_path, 'r') as f:
                     config = json.load(f)
                 logger.info(f"✅ Configuration loaded from {config_path}")
+                
+                # Validate that we're running as root
+                if os.geteuid() != 0:
+                    logger.error(f"❌ This service must run as root for IPMI standard ports")
+                    logger.error(f"� Run with: sudo ./ipmi-bridge")
+                    sys.exit(1)
+                
+                # Log port information
+                if 'vms' in config:
+                    ports = [vm.get('port', 'unknown') for vm in config['vms']]
+                    logger.info(f"✅ Using IPMI standard ports: {ports} (running as root)")
+                
                 return config
         except json.JSONDecodeError as e:
             logger.error(f"❌ Invalid JSON in configuration file {config_path}: {e}")
@@ -387,14 +467,45 @@ def load_config():
 
 def main():
     """Main function to start the IPMI VMware bridge"""
-    logger.info("🚀 Starting IPMI VMware Bridge Service")
+    import argparse
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='IPMI VMware Bridge - OpenShift Virtualization Integration')
+    parser.add_argument('--config', '-c', help='Configuration file path')
+    parser.add_argument('--dev', action='store_true', help='Use development config with non-privileged ports')
+    parser.add_argument('--test-config', action='store_true', help='Test configuration and exit')
+    parser.add_argument('--check-ports', action='store_true', help='Check if ports are available')
+    args = parser.parse_args()
+    
+    # Determine config file
+    config_file = None
+    if args.dev:
+        config_file = 'config/config-dev.json'
+        logger.info("� Development mode: Using non-privileged ports")
+    elif args.config:
+        config_file = args.config
+        logger.info(f"📁 Using custom config: {config_file}")
+    
+    logger.info("�🚀 Starting IPMI VMware Bridge Service")
     logger.info("📡 This bridge will receive IPMI calls from OpenShift Virtualization BMH (BareMetalHost) resources")
     
     # Load configuration
-    config = load_config()
+    config = load_config(config_file)
     if not config:
         logger.error("❌ Failed to load configuration. Exiting.")
+        logger.info("💡 Try: ./ipmi-bridge --dev  (for development with non-privileged ports)")
         sys.exit(1)
+    
+    # Test configuration and exit if requested
+    if args.test_config:
+        vm_count = len(config.get('vms', []))
+        logger.info(f"✅ Configuration test passed: {vm_count} VMs configured")
+        return
+    
+    # Check port availability if requested
+    if args.check_ports:
+        check_port_availability(config)
+        return
     
     # Log configuration summary
     vm_count = len(config.get('vms', []))
@@ -429,8 +540,23 @@ def main():
                 logger.info(f"✅ BMC started for VM '{vm_name}' on port {port}")
                 logger.info(f"🔗 OpenShift BMH can connect to: IPMI over LAN+ at port {port}")
                 
+            except PermissionError as e:
+                if port < 1024:
+                    logger.error(f"❌ Permission denied for VM {vm_name} on port {port}")
+                    logger.error(f"🔒 Port {port} requires root privileges")
+                    logger.info(f"💡 Solution: Run as root -> sudo ./ipmi-bridge")
+                else:
+                    logger.error(f"❌ Permission denied for VM {vm_name} on port {port}: {e}")
+            except OSError as e:
+                if "Address already in use" in str(e):
+                    logger.error(f"❌ Port {port} already in use for VM {vm_name}")
+                    logger.info(f"💡 Check if another IPMI service is running: sudo netstat -tulpn | grep {port}")
+                else:
+                    logger.error(f"❌ Network error for VM {vm_name} on port {port}: {e}")
             except Exception as e:
                 logger.error(f"❌ Failed to start BMC for VM {vm_config.get('name', 'unknown')}: {e}")
+                if "permission" in str(e).lower():
+                    logger.info(f"💡 Try running as root: sudo ./ipmi-bridge")
         
         if not bmc_instances:
             logger.error("❌ No BMC instances started. Exiting.")
