@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-Main Redfish Handler
+Main Redfish Handler - AI-Generated
+
+Note: This application is AI-generated.
+
 Routes requests to appropriate handlers and manages the overall Redfish protocol.
 """
 

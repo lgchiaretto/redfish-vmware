@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-VMware vSphere Client - Modularized Version
+VMware vSphere Client - First Version (AI-Generated)
+
+Note: This application is AI-generated.
 
 This module provides a client interface to VMware vSphere for VM operations.
 Used by the Redfish server to perform actual VM management operations.

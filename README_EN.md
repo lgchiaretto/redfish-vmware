@@ -1,6 +1,6 @@
 # Redfish VMware Server
 
-> **Note:** This application is AI-generated and represents the first version of a Redfish-to-VMware bridge solution.
+> **Note:** This application is AI-generated and represents a Redfish-to-VMware bridge solution.
 
 This project provides a **Redfish** server that acts as a bridge between Redfish (REST API) calls and VMware vSphere operations, allowing you to control VMware VMs through the industry-standard Redfish protocol.
 
@@ -43,15 +43,6 @@ src/
     └── media_operations.py     # Media operations (ISO/CD-ROM)
 ```
 
-### 🔧 Modularization Benefits
-
-- **Separation of Concerns** - Each module has a specific function
-- **Maintainability** - Easy bug location and fixing
-- **Scalability** - Easy addition of new features
-- **Testability** - Each module can be tested independently
-- **Reusability** - Components can be reused in other projects
-- **Readability** - Cleaner and more organized code
-
 ## 🌟 Main Features
 
 - **Complete Redfish server** - Implements standard Redfish endpoints with HTTPS
@@ -64,44 +55,6 @@ src/
 - **Metal3 Inspection Ready** - Specific endpoints for hardware inspection by OpenShift
 - **Zero Failed Queries** - Smart system that prevents failures in Metal3 periodic queries
 - **Real-time Task Progress** - Tasks with real-time progress and auto-completion
-
-## 🔧 Metal3/Ironic Improvements (v1.0)
-
-### ✅ Issues Resolved in this version
-
-- **❌ RedfishFirmware._query_update_failed** → ✅ **Resolved** - Asynchronous task system for firmware
-- **❌ RedfishManagement._query_firmware_update_failed** → ✅ **Resolved** - Firmware operations always successful
-- **❌ RedfishRAID._query_raid_config_failed** → ✅ **Resolved** - Asynchronous RAID system with dynamic tasks
-- **❌ RedfishPower._query_power_state_failed** → ✅ **Resolved** - Power states always available
-- **❌ RedfishBoot._query_boot_config_failed** → ✅ **Resolved** - Boot configurations always respond
-- **❌ RedfishInspection._query_hardware_failed** → ✅ **Resolved** - Complete hardware inspection implemented
-
-### 🆕 New Features Implemented (v1.0)
-
-#### 🔍 1. Advanced Debug System for Metal3
-- **CRITICAL ENDPOINT ALERTS** - WARNING logs for critical Metal3 endpoints
-- **BIOS FIRMWARE MONITORING** - Specific alerts for `/UpdateService/FirmwareInventory/BIOS` requests
-- **FAILED TASK DETECTION** - Automatic detection of failed tasks to alert Metal3
-- **REQUEST/RESPONSE LOGGING** - Complete log of requests and responses with timings
-- **USER-AGENT DETECTION** - Automatic detection of Metal3/Ironic requests
-- **ENDPOINT CATEGORIZATION** - Automatic categorization of endpoints by criticality
-- **EXCEPTION TRACKING** - Detailed exception tracking with stack traces
-- **RESPONSE SIZE MONITORING** - Monitoring of JSON response sizes
-
-#### 📋 2. Dynamic Asynchronous Task System
-- **Dynamic Task Creation** - Automatic creation of tasks for long operations
-- **Real-time Progress Tracking** - Progress updated automatically every 5 seconds
-- **Auto Task Completion** - Tasks complete automatically based on type
-- **Task Cleanup** - Automatic cleanup of old tasks (1 hour retention)
-- **Initial Sample Tasks** - Pre-created tasks to avoid empty lists
-- **Thread-safe Task Management** - Thread-safe system with locks for concurrency
-
-#### 🔄 3. Complete EventService
-- **Event Service** - Complete event service for notifications
-- **Event Subscriptions** - Collection of event subscriptions
-- **Event Types** - StatusChange, ResourceUpdated, ResourceAdded, ResourceRemoved, Alert
-- **Test Event Actions** - Endpoint for sending test events
-- **Retry Logic** - Configuration of retries and retry intervals
 
 ## 📋 Prerequisites
 

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-VMware Redfish Server - Modularized Version
+VMware Redfish Server - First Version (AI-Generated)
+
+Note: This application is AI-generated and represents the first version 
+of a Redfish-to-VMware bridge solution.
+
 Provides Redfish REST API interface for VMware VMs management.
 Converts Redfish operations to VMware vSphere API calls.
 """

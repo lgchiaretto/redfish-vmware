@@ -1,17 +1,17 @@
 {
   "vmware": {
-    "host": "vcenter.exemplo.com",
+    "host": "vcenter.example.com",
     "user": "administrator@vsphere.local", 
-    "password": "sua-senha-aqui",
+    "password": "your-password-here",
     "port": 443,
     "disable_ssl": true
   },
   "vms": [
     {
       "name": "vm-master-0",
-      "vcenter_host": "vcenter.exemplo.com",
+      "vcenter_host": "vcenter.example.com",
       "vcenter_user": "administrator@vsphere.local",
-      "vcenter_password": "sua-senha-aqui",
+      "vcenter_password": "your-password-here",
       "redfish_port": 8443,
       "redfish_user": "admin",
       "redfish_password": "password",
@@ -19,9 +19,9 @@
     },
     {
       "name": "vm-master-1",
-      "vcenter_host": "vcenter.exemplo.com", 
+      "vcenter_host": "vcenter.example.com", 
       "vcenter_user": "administrator@vsphere.local",
-      "vcenter_password": "sua-senha-aqui",
+      "vcenter_password": "your-password-here",
       "redfish_port": 8444,
       "redfish_user": "admin",
       "redfish_password": "password",
@@ -29,9 +29,9 @@
     },
     {
       "name": "vm-worker-0",
-      "vcenter_host": "vcenter.exemplo.com",
+      "vcenter_host": "vcenter.example.com",
       "vcenter_user": "administrator@vsphere.local",
-      "vcenter_password": "sua-senha-aqui",
+      "vcenter_password": "your-password-here",
       "redfish_port": 8445,
       "redfish_user": "admin",
       "redfish_password": "password",

@@ -1,17 +1,17 @@
 # OpenShift BareMetalHost Testing Guide
 
-Este guia documenta como testar a integração do servidor Redfish com o OpenShift BareMetalHost.
+This guide documents how to test the Redfish server integration with OpenShift BareMetalHost.
 
-## Pré-requisitos
+## Prerequisites
 
-1. ✅ Servidor Redfish instalado e funcionando
-2. ✅ VMs de teste configuradas (todas as 5 VMs: 3 masters + 2 workers)
-3. ✅ Conectividade de rede entre OpenShift e o servidor Redfish
-4. 🔄 Cluster OpenShift com Metal3 operator instalado
+1. ✅ Redfish server installed and running
+2. ✅ Test VMs configured (all 5 VMs: 3 masters + 2 workers)
+3. ✅ Network connectivity between OpenShift and Redfish server
+4. 🔄 OpenShift cluster with Metal3 operator installed
 
-## ⚠️ IMPORTANTE: Configuração HTTP 
+## ⚠️ IMPORTANT: HTTP Configuration 
 
-**CRÍTICO**: Para evitar erros SSL, todos os BMH files foram atualizados para usar `http://` ao invés de `redfish://`:
+**CRITICAL**: To avoid SSL errors, all BMH files have been updated to use `http://` instead of `redfish://`:
 
 ```yaml
 bmc:
@@ -20,16 +20,16 @@ bmc:
   disableCertificateVerification: true
 ```
 
-**Erro Corrigido**: 
-- ❌ Antes: SSL: WRONG_VERSION_NUMBER - HTTPS em porta HTTP
-- ✅ Agora: HTTP puro funcionando perfeitamente
+**Fixed Error**: 
+- ❌ Before: SSL: WRONG_VERSION_NUMBER - HTTPS on HTTP port
+- ✅ Now: Pure HTTP working perfectly
 
-## Estrutura dos Testes
+## Test Structure
 
-### 1. Testes de Conectividade Básica
+### 1. Basic Connectivity Tests
 
 ```bash
-# Testar endpoints Redfish para todas as VMs
+# Test Redfish endpoints for all VMs
 curl http://bastion.chiaret.to:8440/redfish/v1/
 curl -u admin:password http://bastion.chiaret.to:8440/redfish/v1/Systems/skinner-master-0
 curl -u admin:password http://bastion.chiaret.to:8441/redfish/v1/Systems/skinner-master-1  
@@ -38,17 +38,17 @@ curl -u admin:password http://bastion.chiaret.to:8443/redfish/v1/Systems/skinner
 curl -u admin:password http://bastion.chiaret.to:8444/redfish/v1/Systems/skinner-worker-2
 ```
 
-### 2. Testes de Power Management
+### 2. Power Management Tests
 
 ```bash
-# Executar script de teste automatizado
+# Run automated test script
 ./tests/test_power_management.sh
 ```
 
-### 3. Aplicação dos BareMetalHosts
+### 3. BareMetalHost Application
 
 ```bash
-# Aplicar TODAS as configurações do BMH (masters + workers)
+# Apply ALL BMH configurations (masters + workers)
 oc apply -f openshift/skinner-master-0-bmh.yaml
 oc apply -f openshift/skinner-master-1-bmh.yaml
 oc apply -f openshift/skinner-master-2-bmh.yaml  
@@ -56,120 +56,120 @@ oc apply -f openshift/skinner-worker-1-bmh.yaml
 oc apply -f openshift/skinner-worker-2-bmh.yaml
 ```
 
-## Configurações do BareMetalHost
+## BareMetalHost Configurations
 
-### Credenciais de Autenticação
+### Authentication Credentials
 - **Username**: `admin`
 - **Password**: `password`
-- **Tipo**: Basic Authentication
+- **Type**: Basic Authentication
 
-### Mapeamento de Portas
+### Port Mapping
 - **skinner-master-0**: http://bastion.chiaret.to:8440
 - **skinner-master-1**: http://bastion.chiaret.to:8441  
 - **skinner-master-2**: http://bastion.chiaret.to:8442
 - **skinner-worker-1**: http://bastion.chiaret.to:8443
 - **skinner-worker-2**: http://bastion.chiaret.to:8444  
-- **Endereço BMC**: `redfish://bastion.chiaret.to:8444/redfish/v1/Systems/skinner-worker-2`
-- **Porta**: 8444
+- **BMC Address**: `redfish://bastion.chiaret.to:8444/redfish/v1/Systems/skinner-worker-2`
+- **Port**: 8444
 - **MAC Address**: `00:50:56:84:8c:23`
 
-## Estados Esperados do BareMetalHost
+## Expected BareMetalHost States
 
-### Sequência Normal de Provisionamento
+### Normal Provisioning Sequence
 
-1. **registering** - BMH está sendo registrado
-2. **inspecting** - Hardware sendo inspecionado  
-3. **available** - Host disponível para provisionamento
-4. **provisioning** - Host sendo provisionado
-5. **provisioned** - Host provisionado com sucesso
+1. **registering** - BMH is being registered
+2. **inspecting** - Hardware being inspected  
+3. **available** - Host available for provisioning
+4. **provisioning** - Host being provisioned
+5. **provisioned** - Host successfully provisioned
 
-### Comandos de Monitoramento
+### Monitoring Commands
 
 ```bash
-# Verificar status dos BMHs
+# Check BMH status
 oc get baremetalhosts -n openshift-machine-api
 
-# Ver detalhes de um BMH específico
+# View details of specific BMH
 oc describe baremetalhost skinner-worker-1 -n openshift-machine-api
 
-# Monitorar logs do metal3 operator
+# Monitor metal3 operator logs
 oc logs -f deployment/metal3-baremetal-operator -n openshift-machine-api
 
-# Verificar eventos relacionados
+# Check related events
 oc get events -n openshift-machine-api --sort-by='.lastTimestamp'
 ```
 
-## Resolução de Problemas
+## Troubleshooting
 
-### 1. BMH fica em estado "registering"
+### 1. BMH stuck in "registering" state
 
 ```bash
-# Verificar conectividade de rede
+# Check network connectivity
 curl -v -u admin:password http://bastion.chiaret.to:8443/redfish/v1/Systems/skinner-worker-1
 
-# Verificar logs do operator
+# Check operator logs
 oc logs deployment/metal3-baremetal-operator -n openshift-machine-api
 ```
 
-### 2. BMH falha na inspeção
+### 2. BMH fails inspection
 
 ```bash
-# Verificar se as VMs estão ligadas
+# Check if VMs are powered on
 curl -u admin:password http://bastion.chiaret.to:8443/redfish/v1/Systems/skinner-worker-1 | jq '.PowerState'
 
-# Verificar configuração do MAC address
+# Check MAC address configuration
 oc get bmh skinner-worker-1 -o yaml | grep bootMACAddress
 ```
 
-### 3. Problemas de autenticação
+### 3. Authentication issues
 
 ```bash
-# Verificar se o secret foi criado corretamente
+# Check if secret was created correctly
 oc get secret skinner-worker-1-bmc-secret -n openshift-machine-api -o yaml
 ```
 
-## Validação de Sucesso
+## Success Validation
 
-O teste será considerado bem-sucedido quando:
+The test will be considered successful when:
 
-1. ✅ Os BareMetalHosts saem do estado "registering" 
-2. ✅ Conseguem completar a inspeção (estado "inspecting" → "available")
-3. ✅ Podem ser provisionados (estado "provisioning" → "provisioned")
-4. ✅ O OpenShift consegue controlar o power management das VMs via Redfish
+1. ✅ BareMetalHosts exit "registering" state 
+2. ✅ Successfully complete inspection ("inspecting" → "available" state)
+3. ✅ Can be provisioned ("provisioning" → "provisioned" state)
+4. ✅ OpenShift can control VM power management via Redfish
 
-## Comandos Úteis
+## Useful Commands
 
-### Limpar e recriar BMHs
+### Clean and recreate BMHs
 ```bash
-# Deletar BMHs existentes
+# Delete existing BMHs
 oc delete bmh skinner-worker-1 skinner-worker-2 -n openshift-machine-api
 
-# Recriar
+# Recreate
 oc apply -f openshift/skinner-worker-1-bmh.yaml
 oc apply -f openshift/skinner-worker-2-bmh.yaml
 ```
 
-### Forçar re-inspeção
+### Force re-inspection
 ```bash
-# Adicionar annotation para forçar re-inspeção
+# Add annotation to force re-inspection
 oc annotate bmh skinner-worker-1 -n openshift-machine-api reboot.metal3.io/capz-remediation-
 ```
 
-### Debug do servidor Redfish
+### Debug Redfish server
 ```bash
-# Ativar modo debug
+# Enable debug mode
 export REDFISH_DEBUG=true
 sudo systemctl restart redfish-vmware-server
 
-# Ver logs detalhados
+# View detailed logs
 sudo journalctl -u redfish-vmware-server -f
 ```
 
-## Próximos Passos
+## Next Steps
 
-Após completar estes testes com sucesso:
+After successfully completing these tests:
 
-1. Documentar todos os resultados
-2. Criar templates para outros clusters OpenShift
-3. Implementar monitoramento automatizado
-4. Desenvolver scripts de manutenção
+1. Document all results
+2. Create templates for other OpenShift clusters
+3. Implement automated monitoring
+4. Develop maintenance scripts

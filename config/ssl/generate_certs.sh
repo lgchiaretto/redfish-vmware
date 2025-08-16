@@ -1,34 +1,34 @@
 #!/bin/bash
 
-# Script para gerar certificados SSL auto-assinados para o Redfish Server
-# Para uso em ambiente de teste/desenvolvimento
+# Script to generate self-signed SSL certificates for the Redfish Server
+# For use in test/development environment
 
 set -e
 
 SSL_DIR="/home/lchiaret/git/ipmi-vmware/config/ssl"
 cd "$SSL_DIR"
 
-# VMs configuradas
+# Configured VMs
 VMS=("skinner-master-0" "skinner-master-1" "skinner-master-2" "skinner-worker-1" "skinner-worker-2")
 
-echo "🔐 Gerando certificados SSL auto-assinados para o Redfish Server..."
+echo "🔐 Generating self-signed SSL certificates for Redfish Server..."
 
 for VM in "${VMS[@]}"; do
-    echo "📜 Gerando certificado para $VM..."
+    echo "📜 Generating certificate for $VM..."
     
-    # Gerar chave privada
+    # Generate private key
     openssl genrsa -out "${VM}.key" 2048
     
-    # Gerar certificado auto-assinado
-    openssl req -new -x509 -key "${VM}.key" -out "${VM}.crt" -days 365 -subj "/C=BR/ST=SP/L=SaoPaulo/O=RedFish/OU=IT/CN=localhost"
+    # Generate self-signed certificate
+    openssl req -new -x509 -key "${VM}.key" -out "${VM}.crt" -days 365 -subj "/C=US/ST=CA/L=SanFrancisco/O=RedFish/OU=IT/CN=localhost"
     
-    # Definir permissões apropriadas
+    # Set appropriate permissions
     chmod 600 "${VM}.key"
     chmod 644 "${VM}.crt"
     
-    echo "✅ Certificado gerado para $VM"
+    echo "✅ Certificate generated for $VM"
 done
 
-echo "🎉 Todos os certificados SSL foram gerados com sucesso!"
-echo "📁 Localização: $SSL_DIR"
-echo "🔒 Os certificados são válidos por 365 dias"
+echo "🎉 All SSL certificates generated successfully!"
+echo "📁 Location: $SSL_DIR"
+echo "🔒 Certificates are valid for 365 days"

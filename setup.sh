@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Redfish VMware Server - Complete Setup Script
+# Redfish VMware Server - Complete Setup Script (AI-Generated v1.0)
+# Note: This application is AI-generated and represents the first version
 # This script configures the entire Redfish server with SystemD integration
-# Updated: 2025-08-16 - Added Metal3/Ironic compatibility with UpdateService, TaskService, BIOS, SecureBoot, and RAID endpoints
 
 set -e  # Exit on any error
 
@@ -17,8 +17,8 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
 
-echo -e "${BLUE}🚀 Redfish VMware Server - Complete Setup (Metal3 Compatible)${NC}"
-echo -e "${BLUE}=============================================================${NC}"
+echo -e "${BLUE}🚀 Redfish VMware Server v1.0 - Complete Setup (AI-Generated)${NC}"
+echo -e "${BLUE}================================================================${NC}"
 echo ""
 
 # Check if running as root for SystemD operations
