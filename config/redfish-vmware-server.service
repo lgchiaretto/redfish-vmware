@@ -9,8 +9,8 @@ Type=simple
 User=root
 Group=root
 WorkingDirectory=/home/lchiaret/git/ipmi-vmware
-Environment=REDFISH_DEBUG=true
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/lchiaret/git/ipmi-vmware/src
 ExecStart=/usr/bin/python3 /home/lchiaret/git/ipmi-vmware/src/redfish_server.py --config /home/lchiaret/git/ipmi-vmware/config/config.json
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=process
@@ -30,11 +30,6 @@ ReadWritePaths=/var/log /var/run /home/lchiaret/git/ipmi-vmware
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=redfish-vmware-server
-
-# Environment variables
-Environment=PYTHONPATH=/home/lchiaret/git/ipmi-vmware/src
-Environment=PYTHONUNBUFFERED=1
-Environment=REDFISH_DEBUG=true
 
 [Install]
 WantedBy=multi-user.target

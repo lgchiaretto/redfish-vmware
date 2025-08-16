@@ -6,6 +6,10 @@
     "port": 443,
     "disable_ssl": true
   },
+  "ssl": {
+    "cert_path": "/etc/letsencrypt/live/bastion.chiaret.to/fullchain.pem",
+    "key_path": "/etc/letsencrypt/live/bastion.chiaret.to/privkey.pem"
+  },
   "vms": [
     {
       "name": "skinner-master-0",
@@ -15,7 +19,7 @@
       "redfish_port": 8440,
       "redfish_user": "admin",
       "redfish_password": "password",
-      "disable_ssl": true
+      "disable_ssl": false
     },
     {
       "name": "skinner-master-1",
@@ -25,7 +29,7 @@
       "redfish_port": 8441,
       "redfish_user": "admin",
       "redfish_password": "password",
-      "disable_ssl": true
+      "disable_ssl": false
     },
     {
       "name": "skinner-master-2",
@@ -35,7 +39,7 @@
       "redfish_port": 8442,
       "redfish_user": "admin",
       "redfish_password": "password",
-      "disable_ssl": true
+      "disable_ssl": false
     },
     {
       "name": "skinner-worker-1",
@@ -45,7 +49,7 @@
       "redfish_port": 8443,
       "redfish_user": "admin",
       "redfish_password": "password",
-      "disable_ssl": true
+      "disable_ssl": false
     },
     {
       "name": "skinner-worker-2",
@@ -55,7 +59,7 @@
       "redfish_port": 8444,
       "redfish_user": "admin",
       "redfish_password": "password",
-      "disable_ssl": true
+      "disable_ssl": false
     }
   ]
 }

@@ -108,50 +108,27 @@ install_system_dependencies() {
     fi
 }
 
-# Function to generate SSL certificates
-generate_ssl_certificates() {
-    print_info "Setting up SSL certificates..."
+# Function to cleanup old SSL certificates
+cleanup_old_ssl_certificates() {
+    print_info "Cleaning up old SSL certificates..."
     
     local ssl_dir="$PROJECT_ROOT/config/ssl"
     
-    # Create SSL directory if it doesn't exist
-    if [[ ! -d "$ssl_dir" ]]; then
-        mkdir -p "$ssl_dir"
-        print_info "Created SSL directory: $ssl_dir"
+    # Remove individual node certificates as we're using Let's Encrypt for all
+    if [[ -d "$ssl_dir" ]]; then
+        print_info "Removing old SSL certificate files..."
+        rm -f "$ssl_dir"/*.crt "$ssl_dir"/*.key 2>/dev/null || true
+        print_success "Old SSL certificates removed"
     fi
     
-    # Check if certificate generation script exists
-    local cert_script="$ssl_dir/generate_certs.sh"
-    if [[ -f "$cert_script" ]]; then
-        # Check if certificates already exist
-        local need_certs=false
-        local vm_names=$(python3 -c "
-import json
-with open('$PROJECT_ROOT/config/config.json', 'r') as f:
-    config = json.load(f)
-for vm in config['vms']:
-    print(vm['name'])
-")
-        
-        for vm_name in $vm_names; do
-            if [[ ! -f "$ssl_dir/${vm_name}.crt" ]] || [[ ! -f "$ssl_dir/${vm_name}.key" ]]; then
-                need_certs=true
-                break
-            fi
-        done
-        
-        if [[ "$need_certs" == "true" ]]; then
-            print_info "Generating SSL certificates..."
-            chmod +x "$cert_script"
-            cd "$ssl_dir"
-            ./"$(basename "$cert_script")"
-            cd "$PROJECT_ROOT"
-            print_success "SSL certificates generated successfully"
-        else
-            print_success "SSL certificates already exist"
-        fi
+    # Check if Let's Encrypt certificates exist
+    if [[ -f "/etc/letsencrypt/live/bastion.chiaret.to/fullchain.pem" ]] && [[ -f "/etc/letsencrypt/live/bastion.chiaret.to/privkey.pem" ]]; then
+        print_success "Let's Encrypt certificates found and will be used for all nodes"
     else
-        print_warning "SSL certificate generation script not found. HTTPS may not work."
+        print_warning "Let's Encrypt certificates not found. SSL will be disabled."
+        print_info "Expected certificates at:"
+        print_info "  - /etc/letsencrypt/live/bastion.chiaret.to/fullchain.pem"
+        print_info "  - /etc/letsencrypt/live/bastion.chiaret.to/privkey.pem"
     fi
 }
 
@@ -519,6 +496,16 @@ cleanup_old_files() {
     # Remove temporary files
     rm -f /tmp/test_vmware_redfish.py 2>/dev/null || true
     
+    # Remove old SSL certificate generation script and individual certificates
+    local ssl_dir="$PROJECT_ROOT/config/ssl"
+    if [[ -d "$ssl_dir" ]]; then
+        print_info "Removing SSL certificate generation script and individual certificates..."
+        rm -f "$ssl_dir/generate_certs.sh" 2>/dev/null || true
+        rm -f "$ssl_dir"/*.crt "$ssl_dir"/*.key 2>/dev/null || true
+        # Keep the ssl directory but remove it if empty
+        rmdir "$ssl_dir" 2>/dev/null || true
+    fi
+    
     print_success "Cleanup completed"
 }
 
@@ -545,8 +532,8 @@ main() {
     # Install dependencies
     install_dependencies
     
-    # Generate SSL certificates
-    generate_ssl_certificates
+    # Cleanup old SSL certificates and check Let's Encrypt
+    cleanup_old_ssl_certificates
     
     # Test VMware connectivity
     if ! test_vmware_connection; then

@@ -139,6 +139,10 @@ Edit `config/config.json`:
     "port": 443,
     "disable_ssl": true
   },
+  "ssl": {
+    "cert_path": "/etc/letsencrypt/live/bastion.chiaret.to/fullchain.pem",
+    "key_path": "/etc/letsencrypt/live/bastion.chiaret.to/privkey.pem"
+  },
   "vms": [
     {
       "name": "worker-vm-1",
@@ -148,7 +152,7 @@ Edit `config/config.json`:
       "redfish_port": 8443,
       "redfish_user": "admin",
       "redfish_password": "password",
-      "disable_ssl": true
+      "disable_ssl": false
     }
   ]
 }
@@ -164,6 +168,7 @@ The script will:
 - ✅ Install Python dependencies
 - ✅ Test VMware connectivity
 - ✅ Configure systemd service
+- ✅ Setup SSL with Let's Encrypt certificates
 - ✅ Configure firewall
 - ✅ Start the service
 
@@ -429,7 +434,7 @@ sudo ./uninstall.sh --force
 - ✅ Historical event tracking
 
 **8. 🔐 Security & Session**
-- ✅ SSL/TLS with self-signed certificates
+- ✅ SSL/TLS with Let's Encrypt certificates
 - ✅ Basic Authentication functional
 - ✅ Session management implemented
 - ✅ SecureBoot configuration
@@ -453,7 +458,7 @@ sudo ./uninstall.sh --force
 
 **System Status**: 🟢 **READY FOR PRODUCTION**
 - ✅ SystemD service configured
-- ✅ SSL certificates auto-generated
+- ✅ SSL with Let's Encrypt certificates
 - ✅ Configuration file validated
 - ✅ VMware integration tested
 - ✅ OpenShift compatibility confirmed
