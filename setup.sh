@@ -508,10 +508,27 @@ else:
     echo ""
 }
 
+# Function to clean up old files
+cleanup_old_files() {
+    print_info "Cleaning up old cache files and temporary data..."
+    
+    # Remove Python cache files
+    find "$PROJECT_ROOT" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+    find "$PROJECT_ROOT" -name "*.pyc" -delete 2>/dev/null || true
+    
+    # Remove temporary files
+    rm -f /tmp/test_vmware_redfish.py 2>/dev/null || true
+    
+    print_success "Cleanup completed"
+}
+
 # Main setup function
 main() {
     echo -e "${BLUE}🔍 Starting Redfish VMware Server setup...${NC}"
     echo ""
+    
+    # Clean up old files first
+    cleanup_old_files
     
     # Detect OS
     detect_os

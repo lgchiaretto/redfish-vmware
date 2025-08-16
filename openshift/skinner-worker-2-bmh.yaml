@@ -1,3 +1,4 @@
+---
 apiVersion: metal3.io/v1alpha1
 kind: BareMetalHost
 metadata:
@@ -7,9 +8,9 @@ metadata:
     infraenvs.agent-install.openshift.io: "skinner"
 spec:
   online: true
-  bootMACAddress: "00:50:56:84:8c:23"
+  bootMACAddress: "00:50:56:84:8c:24"
   bmc:
-    address: redfish://bastion.chiaret.to:8444/redfish/v1/Systems/skinner-worker-2
+    address: http://bastion.chiaret.to:8444/redfish/v1/Systems/skinner-worker-2
     credentialsName: skinner-worker-2-bmc-secret
     disableCertificateVerification: true
   description: "VMware VM - Worker Node 2"

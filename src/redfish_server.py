@@ -28,6 +28,12 @@ class RedfishHTTPServer(HTTPServer):
     def __init__(self, server_address, RequestHandlerClass, handler):
         super().__init__(server_address, RequestHandlerClass)
         self.handler = handler
+        self.allow_reuse_address = True
+        
+    def server_bind(self):
+        """Override to ensure proper socket configuration"""
+        super().server_bind()
+        self.socket.setsockopt(socketserver.socket.SOL_SOCKET, socketserver.socket.SO_REUSEADDR, 1)
 
 
 class RedfishServer:
@@ -116,6 +122,8 @@ class RedfishServer:
                         logger.warning(f"⚠️  HTTPS setup failed for {vm_name}, falling back to HTTP: {ssl_error}")
                 else:
                     logger.info(f"📄 HTTP mode enabled for {vm_name} (SSL disabled in config)")
+                    logger.info(f"💡 Client should connect to: http://bastion.chiaret.to:{port}/redfish/v1/")
+                    logger.warning(f"⚠️  HTTPS connections will FAIL - use HTTP only for {vm_name}")
                 
                 # Start server in thread
                 server_thread = threading.Thread(

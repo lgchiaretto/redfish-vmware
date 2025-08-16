@@ -5,17 +5,35 @@ Este guia documenta como testar a integração do servidor Redfish com o OpenShi
 ## Pré-requisitos
 
 1. ✅ Servidor Redfish instalado e funcionando
-2. ✅ VMs de teste configuradas (skinner-worker-1 e skinner-worker-2)
+2. ✅ VMs de teste configuradas (todas as 5 VMs: 3 masters + 2 workers)
 3. ✅ Conectividade de rede entre OpenShift e o servidor Redfish
 4. 🔄 Cluster OpenShift com Metal3 operator instalado
+
+## ⚠️ IMPORTANTE: Configuração HTTP 
+
+**CRÍTICO**: Para evitar erros SSL, todos os BMH files foram atualizados para usar `http://` ao invés de `redfish://`:
+
+```yaml
+bmc:
+  address: 'http://bastion.chiaret.to:8441/redfish/v1/Systems/skinner-master-1'
+  credentialsName: skinner-master-1-bmc-secret
+  disableCertificateVerification: true
+```
+
+**Erro Corrigido**: 
+- ❌ Antes: SSL: WRONG_VERSION_NUMBER - HTTPS em porta HTTP
+- ✅ Agora: HTTP puro funcionando perfeitamente
 
 ## Estrutura dos Testes
 
 ### 1. Testes de Conectividade Básica
 
 ```bash
-# Testar endpoints Redfish
-curl http://bastion.chiaret.to:8443/redfish/v1/
+# Testar endpoints Redfish para todas as VMs
+curl http://bastion.chiaret.to:8440/redfish/v1/
+curl -u admin:password http://bastion.chiaret.to:8440/redfish/v1/Systems/skinner-master-0
+curl -u admin:password http://bastion.chiaret.to:8441/redfish/v1/Systems/skinner-master-1  
+curl -u admin:password http://bastion.chiaret.to:8442/redfish/v1/Systems/skinner-master-2
 curl -u admin:password http://bastion.chiaret.to:8443/redfish/v1/Systems/skinner-worker-1
 curl -u admin:password http://bastion.chiaret.to:8444/redfish/v1/Systems/skinner-worker-2
 ```
@@ -30,7 +48,10 @@ curl -u admin:password http://bastion.chiaret.to:8444/redfish/v1/Systems/skinner
 ### 3. Aplicação dos BareMetalHosts
 
 ```bash
-# Aplicar configurações do BMH
+# Aplicar TODAS as configurações do BMH (masters + workers)
+oc apply -f openshift/skinner-master-0-bmh.yaml
+oc apply -f openshift/skinner-master-1-bmh.yaml
+oc apply -f openshift/skinner-master-2-bmh.yaml  
 oc apply -f openshift/skinner-worker-1-bmh.yaml
 oc apply -f openshift/skinner-worker-2-bmh.yaml
 ```
@@ -42,12 +63,12 @@ oc apply -f openshift/skinner-worker-2-bmh.yaml
 - **Password**: `password`
 - **Tipo**: Basic Authentication
 
-### skinner-worker-1
-- **Endereço BMC**: `redfish://bastion.chiaret.to:8443/redfish/v1/Systems/skinner-worker-1`
-- **Porta**: 8443
-- **MAC Address**: `00:50:56:84:8c:22`
-
-### skinner-worker-2  
+### Mapeamento de Portas
+- **skinner-master-0**: http://bastion.chiaret.to:8440
+- **skinner-master-1**: http://bastion.chiaret.to:8441  
+- **skinner-master-2**: http://bastion.chiaret.to:8442
+- **skinner-worker-1**: http://bastion.chiaret.to:8443
+- **skinner-worker-2**: http://bastion.chiaret.to:8444  
 - **Endereço BMC**: `redfish://bastion.chiaret.to:8444/redfish/v1/Systems/skinner-worker-2`
 - **Porta**: 8444
 - **MAC Address**: `00:50:56:84:8c:23`

@@ -15,12 +15,17 @@ class RedfishRequestHandler(BaseHTTPRequestHandler):
     """Redfish HTTP request handler"""
     
     def setup(self):
-        """Setup connection - detect SSL attempts on HTTP port"""
+        """Setup connection - detect and handle SSL attempts on HTTP port"""
         try:
             super().setup()
         except Exception as e:
-            # Log SSL attempts cleanly
-            logger.warning(f"Connection setup failed from {self.client_address[0]} - likely SSL/TLS attempt on HTTP port")
+            # Handle SSL/TLS attempts on HTTP port more gracefully
+            error_str = str(e).lower()
+            if any(ssl_term in error_str for ssl_term in ['ssl', 'tls', 'handshake', 'wrong version']):
+                logger.warning(f"SSL/TLS connection attempt detected from {self.client_address[0]} on HTTP port")
+                logger.info(f"Hint: Client should connect using HTTP (not HTTPS) to this endpoint")
+            else:
+                logger.warning(f"Connection setup failed from {self.client_address[0]}: {e}")
             raise
     
     def log_message(self, format, *args):
@@ -64,7 +69,7 @@ class RedfishRequestHandler(BaseHTTPRequestHandler):
             logger.debug(f"{self.address_string()} - Log filtering error: {e}")
     
     def parse_request(self):
-        """Override to catch SSL/TLS attempts early"""
+        """Override to catch SSL/TLS attempts early and provide helpful response"""
         try:
             return super().parse_request()
         except Exception as e:
@@ -72,7 +77,17 @@ class RedfishRequestHandler(BaseHTTPRequestHandler):
             if hasattr(self, 'raw_requestline') and self.raw_requestline:
                 # SSL/TLS handshake typically starts with 0x16 (22 in decimal)
                 if len(self.raw_requestline) > 0 and self.raw_requestline[0] == 0x16:
-                    logger.warning(f"{self.client_address[0]} - SSL/TLS handshake detected on HTTP port - client should connect via HTTP")
+                    logger.warning(f"{self.client_address[0]} - SSL/TLS handshake detected on HTTP port")
+                    logger.info(f"Client should connect via HTTP (not HTTPS) - SSL is disabled for this endpoint")
+                    # Send a helpful response to indicate HTTP should be used
+                    try:
+                        self.wfile.write(b"HTTP/1.1 400 Bad Request\r\n")
+                        self.wfile.write(b"Content-Type: text/plain\r\n")
+                        self.wfile.write(b"Connection: close\r\n\r\n")
+                        self.wfile.write(b"Error: SSL/TLS connection attempted on HTTP port. Please use HTTP (not HTTPS) for this endpoint.\r\n")
+                        self.wfile.flush()
+                    except:
+                        pass
                     return False
             
             logger.debug(f"Request parsing failed from {self.client_address[0]}: {e}")

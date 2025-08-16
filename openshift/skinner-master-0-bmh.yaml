@@ -1,0 +1,42 @@
+---
+apiVersion: metal3.io/v1alpha1
+kind: BareMetalHost
+metadata:
+  name: skinner-master-0
+  namespace: openshift-machine-api
+  finalizers:
+    - baremetalhost.metal3.io
+  labels:
+    installer.openshift.io/role: control-plane
+spec:
+  hardwareProfile: unknown
+  automatedCleaningMode: metadata
+  online: true
+  userData:
+    name: master-user-data-managed
+    namespace: openshift-machine-api
+  bootMode: UEFI
+  bootMACAddress: '00:50:56:84:8c:20'
+  bmc:
+    address: 'http://bastion.chiaret.to:8440/redfish/v1/Systems/skinner-master-0'
+    credentialsName: skinner-master-0-bmc-secret
+    disableCertificateVerification: true
+  customDeploy:
+    method: install_coreos
+  externallyProvisioned: true
+  description: 'VMware VM - Master Node 0'
+  consumerRef:
+    apiVersion: machine.openshift.io/v1beta1
+    kind: Machine
+    name: skinner-j78qp-master-0
+    namespace: openshift-machine-api
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: skinner-master-0-bmc-secret
+  namespace: openshift-machine-api
+type: Opaque
+data:
+  username: "YWRtaW4="  # admin
+  password: "cGFzc3dvcmQ="  # password

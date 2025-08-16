@@ -199,12 +199,19 @@ src/
 #### 🔐 Suporte HTTPS Completo (NOVO v3.0.3)
 - **CERTIFICADOS SSL AUTO-ASSINADOS** - Geração automática de certificados SSL para cada VM
 - **CONFIGURAÇÃO SSL POR VM** - Controle individual de SSL via `disable_ssl` na configuração
-- **HTTPS POR PADRÃO** - Todas as VMs configuradas para usar HTTPS com certificados válidos
+- **HTTP MODE FORÇADO** - Configuração `disable_ssl: true` força modo HTTP para compatibilidade com Metal3
 - **FALLBACK HTTP** - Fallback automático para HTTP se SSL falhar
 - **CERTIFICADOS VÁLIDOS POR 365 DIAS** - Certificados com validade de 1 ano
 - **SCRIPT DE GERAÇÃO** - Script automático para renovação de certificados
 - **INTEGRAÇÃO SETUP** - Geração automática de certificados durante o setup
 - **LOGS LIMPOS** - Filtragem inteligente de requests HTTP em portas HTTPS
+
+#### ⚠️ Configuração HTTP/HTTPS (IMPORTANTE)
+- **Metal3 BMH Configuration** - Use `http://` ao invés de `redfish://` nos BMH files para forçar HTTP
+- **SSL Error Prevention** - Com `disable_ssl: true`, todos os endpoints funcionam em HTTP puro
+- **Port Mapping** - Cada VM tem sua porta específica (8440-8444) configurada em HTTP
+- **Client Compatibility** - Metal3/Ironic deve conectar via HTTP quando SSL estiver desabilitado
+- **Error Resolution** - Erro "SSL: WRONG_VERSION_NUMBER" indica tentativa HTTPS em porta HTTP
 
 #### 📋 Sistema de Tasks Inteligente
 - **Task Collection Expandida** - 60+ tarefas históricas para evitar consultas vazias
@@ -465,6 +472,55 @@ O script irá:
 - ✅ Configurar serviço systemd
 - ✅ Configurar firewall
 - ✅ Iniciar o serviço
+
+## 🧪 Procedimento de Teste
+
+### Sequência Obrigatória para Aplicação
+
+**IMPORTANTE**: Sempre execute na seguinte ordem para garantir funcionamento:
+
+```bash
+# 1. Executar setup (sempre que houver alteração)
+./setup.sh
+
+# 2. Reiniciar o serviço com systemd
+sudo systemctl restart redfish-vmware-server
+
+# 3. Verificar status do serviço
+sudo systemctl status redfish-vmware-server
+
+# 4. Monitorar logs em tempo real
+tail -f /var/log/redfish-vmware-server.log
+
+# 5. Testar conectividade HTTP básica
+curl -u admin:password http://bastion.chiaret.to:8441/redfish/v1/Systems/skinner-master-1
+```
+
+### Validação Metal3/Ironic (Crítico)
+
+Para garantir que não existem falhas no Metal3:
+
+```bash
+# Monitorar logs do Metal3 por 2+ minutos
+oc logs -n openshift-machine-api metal3-6bdfcb7dc-np525 -c metal3-ironic | grep -i failed
+
+# ✅ SUCESSO: Nenhuma mensagem "failed" por mais de 2 minutos
+# ❌ FALHA: Padrão de "failed" uma vez por minuto = problema na aplicação
+```
+
+### Configuração BMH (HTTP obrigatório)
+
+Para evitar erros SSL, use **http://** nos arquivos BMH:
+
+```yaml
+bmc:
+  address: 'http://bastion.chiaret.to:8441/redfish/v1/Systems/skinner-master-1'
+  credentialsName: skinner-master-1-bmc-secret
+  disableCertificateVerification: true
+```
+
+**❌ ERRO COMUM**: Usar `redfish://` ou `https://` com `disable_ssl: true`
+**✅ CORRETO**: Usar `http://` com `disable_ssl: true`
 
 ## � Autenticação
 
