@@ -14,9 +14,9 @@ import threading
 import time
 from http.server import HTTPServer
 
-from utils.logging_config import setup_logging
-from handlers.http_handler import RedfishRequestHandler
-from handlers.redfish_handler import RedfishHandler
+from .utils.logging_config import setup_logging
+from .handlers.http_handler import RedfishRequestHandler
+from .handlers.redfish_handler import RedfishHandler
 
 # Setup logging first
 logger = setup_logging()
@@ -57,7 +57,7 @@ class RedfishServer:
             
             # Log VM configurations (without passwords)
             for vm in config['vms']:
-                logger.info(f"🖥️  VM: {vm['name']} - vCenter: {vm['vcenter_host']} - Port: {vm['redfish_port']}")
+                logger.info(f"🖥️  VM: {vm['name']} - vCenter: {vm['vcenter_host']} - Port: {vm['port']}")
             
             return config
             
@@ -84,7 +84,7 @@ class RedfishServer:
         # Start a server for each VM
         for vm_config in vm_configs:
             vm_name = vm_config['name']
-            port = vm_config.get('redfish_port', 8443)
+            port = vm_config.get('port', 8443)
             
             try:
                 logger.info(f"🚀 Starting Redfish server for {vm_name} on port {port}")

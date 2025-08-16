@@ -8,6 +8,36 @@
   },
   "vms": [
     {
+      "name": "skinner-master-0",
+      "vcenter_host": "chiaretto-vcsa01.chiaret.to",
+      "vcenter_user": "administrator@chiaretto.local",
+      "vcenter_password": "VMware1!VMware1!",
+      "redfish_port": 8440,
+      "redfish_user": "admin",
+      "redfish_password": "password",
+      "disable_ssl": true
+    },
+    {
+      "name": "skinner-master-1",
+      "vcenter_host": "chiaretto-vcsa01.chiaret.to",
+      "vcenter_user": "administrator@chiaretto.local",
+      "vcenter_password": "VMware1!VMware1!",
+      "redfish_port": 8441,
+      "redfish_user": "admin",
+      "redfish_password": "password",
+      "disable_ssl": true
+    },
+    {
+      "name": "skinner-master-2",
+      "vcenter_host": "chiaretto-vcsa01.chiaret.to",
+      "vcenter_user": "administrator@chiaretto.local",
+      "vcenter_password": "VMware1!VMware1!",
+      "redfish_port": 8442,
+      "redfish_user": "admin",
+      "redfish_password": "password",
+      "disable_ssl": true
+    },
+    {
       "name": "skinner-worker-1",
       "vcenter_host": "chiaretto-vcsa01.chiaret.to",
       "vcenter_user": "administrator@chiaretto.local",

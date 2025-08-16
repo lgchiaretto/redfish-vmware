@@ -7,10 +7,10 @@ Used by the Redfish server to perform actual VM management operations.
 """
 
 import logging
-from vmware.connection import VMwareConnection
-from vmware.vm_operations import VMOperations
-from vmware.power_operations import PowerOperations
-from vmware.media_operations import MediaOperations
+from .vmware.connection import VMwareConnection
+from .vmware.vm_operations import VMOperations
+from .vmware.power_operations import PowerOperations
+from .vmware.media_operations import MediaOperations
 
 logger = logging.getLogger(__name__)
 

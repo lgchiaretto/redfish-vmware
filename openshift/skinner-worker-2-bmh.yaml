@@ -9,7 +9,7 @@ spec:
   online: true
   bootMACAddress: "00:50:56:84:8c:23"
   bmc:
-    address: redfish+https://bastion.chiaret.to:8444/redfish/v1/Systems/skinner-worker-2
+    address: redfish://bastion.chiaret.to:8444/redfish/v1/Systems/skinner-worker-2
     credentialsName: skinner-worker-2-bmc-secret
     disableCertificateVerification: true
   description: "VMware VM - Worker Node 2"

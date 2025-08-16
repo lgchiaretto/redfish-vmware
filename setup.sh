@@ -33,11 +33,13 @@ fi
 # Check for debug mode - Default to enabled for Metal3 troubleshooting
 DEBUG_MODE=${REDFISH_DEBUG:-true}
 if [[ "$DEBUG_MODE" == "true" ]]; then
-    echo -e "${YELLOW}🐛 DEBUG MODE ENABLED - Enhanced Metal3/Ironic compatibility logging${NC}"
-    echo -e "${YELLOW}💡 All Redfish requests will be logged in detail for troubleshooting${NC}"
+    echo -e "${YELLOW}🐛 DEBUG MODE ENABLED - Enhanced Metal3/Ironic debugging${NC}"
+    echo -e "${YELLOW}💡 All Redfish requests logged with detailed Metal3 failure analysis${NC}"
+    echo -e "${YELLOW}🔍 Critical endpoints monitored: UpdateService, FirmwareInventory, TaskService${NC}"
+    echo -e "${YELLOW}⚠️  Special BIOS firmware component logging enabled${NC}"
 else
     echo -e "${BLUE}📋 PRODUCTION MODE - Standard logging${NC}"
-    echo -e "${YELLOW}💡 Set REDFISH_DEBUG=true for detailed debugging${NC}"
+    echo -e "${YELLOW}💡 Set REDFISH_DEBUG=true for Metal3 failure debugging${NC}"
 fi
 
 print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }

@@ -2,12 +2,53 @@
 
 Este projeto fornece um servidor **Redfish** que atua como bridge entre chamadas Redfish (REST API) e operações VMware vSphere, permitindo controlar VMs VMware através do protocolo Redfish padrão da indústria.
 
-🎯 **Projeto IPMI-VMware Bridge v3.0** - 100% Funcional ✅
+🎯 **Projeto IPMI-VMware Bridge v3.0** - 100% Funcional ✅ **[Modularizado]**
 
 **✅ Compatível com OpenShift Metal3 - Sistema de tarefas assíncronas completo**
-**🐛 Debug Mode Ativado por Padrão - Visibilidade total das chamadas Metal3/Ironic**
+**🐛 DEBUG MODE AVANÇADO - Diagnóstico completo de falhas Metal3/Ironic**
 **🔧 Metal3 Failure Prevention - ZERO consultas falhadas nos logs do Ironic**
 **📋 Dynamic Task Management - Sistema de tarefas dinâmico com progresso em tempo real**
+**🚨 CRITICAL ENDPOINT MONITORING - Alertas para endpoints críticos do Metal3**
+**🏗️ ARQUITETURA MODULAR - Código organizado em módulos especializados**
+
+## 🏗️ Arquitetura Modular
+
+Este projeto foi completamente **modularizado** para melhor manutenibilidade e escalabilidade:
+
+### 📁 Estrutura de Diretórios
+
+```
+src/
+├── redfish_server.py           # Servidor principal (191 linhas)
+├── vmware_client.py            # Cliente VMware modularizado (120 linhas)
+├── handlers/                   # Manipuladores Redfish especializados
+│   ├── redfish_handler.py      # Handler principal do Redfish
+│   ├── systems_handler.py      # Gerenciamento de sistemas/VMs
+│   ├── managers_handler.py     # Gerenciamento de gerenciadores BMC
+│   ├── chassis_handler.py      # Gerenciamento de chassis
+│   ├── update_service_handler.py # Serviços de atualização
+│   └── http_handler.py         # Manipulador HTTP base
+├── auth/                       # Sistema de autenticação
+│   └── manager.py              # Gerenciador de autenticação e sessões
+├── tasks/                      # Sistema de tarefas assíncronas
+│   └── manager.py              # Gerenciador de tarefas Metal3
+├── utils/                      # Utilitários do sistema
+│   └── logging_config.py       # Configuração de logging
+└── vmware/                     # Operações VMware especializadas
+    ├── connection.py           # Gerenciamento de conexões vSphere
+    ├── vm_operations.py        # Operações básicas de VM
+    ├── power_operations.py     # Operações de energia (ligar/desligar)
+    └── media_operations.py     # Operações de mídia (ISO/CD-ROM)
+```
+
+### 🔧 Vantagens da Modularização
+
+- **Separação de Responsabilidades** - Cada módulo tem uma função específica
+- **Manutenibilidade** - Fácil localização e correção de bugs
+- **Escalabilidade** - Fácil adição de novos recursos
+- **Testabilidade** - Cada módulo pode ser testado independentemente
+- **Reutilização** - Componentes podem ser reutilizados em outros projetos
+- **Legibilidade** - Código mais limpo e organizado
 
 ## 🌟 Principais Funcionalidades
 
@@ -35,7 +76,17 @@ Este projeto fornece um servidor **Redfish** que atua como bridge entre chamadas
 
 ### 🆕 Novas Funcionalidades Implementadas (v3.0)
 
-#### 📋 1. Sistema de Tarefas Assíncronas Dinâmico
+#### � 1. Sistema de Debug Avançado para Metal3
+- **CRITICAL ENDPOINT ALERTS** - Logs de WARNING para endpoints críticos do Metal3
+- **BIOS FIRMWARE MONITORING** - Alertas específicos para requests `/UpdateService/FirmwareInventory/BIOS`
+- **FAILED TASK DETECTION** - Detecção automática de tasks com falha para alertar Metal3
+- **REQUEST/RESPONSE LOGGING** - Log completo de requests e responses com timings
+- **USER-AGENT DETECTION** - Detecção automática de requests do Metal3/Ironic
+- **ENDPOINT CATEGORIZATION** - Classificação automática de endpoints por criticidade
+- **EXCEPTION TRACKING** - Rastreamento detalhado de exceptions com stack traces
+- **RESPONSE SIZE MONITORING** - Monitoramento do tamanho das respostas JSON
+
+#### �📋 2. Sistema de Tarefas Assíncronas Dinâmico
 - **Dynamic Task Creation** - Criação automática de tarefas para operações longas
 - **Real-time Progress Tracking** - Progresso atualizado automaticamente a cada 5 segundos
 - **Auto Task Completion** - Tarefas completam automaticamente com base no tipo
@@ -126,6 +177,16 @@ Este projeto fornece um servidor **Redfish** que atua como bridge entre chamadas
 
 ### 🔧 Implementações Específicas para Metal3
 
+#### 🐛 Debug Avançado Anti-Failure (NOVO v3.0.1)
+- **ENDPOINT MONITORING** - Monitoramento em tempo real de todos os endpoints críticos do Metal3
+- **BIOS ALERT SYSTEM** - Sistema de alertas específico para requests do endpoint BIOS firmware
+- **ZERO FAILED TASKS** - Garantia de 0 tarefas falhadas reportadas ao Metal3/Ironic
+- **REQUEST TRACING** - Log completo de todas as requests com User-Agent detection
+- **RESPONSE VALIDATION** - Validação de respostas para garantir compatibilidade total
+- **CRITICAL PATH LOGGING** - Logs de WARNING para todos os paths críticos do Metal3
+- **EXCEPTION PREVENTION** - Sistema preventivo contra exceptions que causam "failed" logs
+
+#### 📋 Sistema de Tasks Inteligente
 - **Task Collection Expandida** - 60+ tarefas históricas para evitar consultas vazias
 - **Firmware Status Endpoints** - `/UpdateStatus` e endpoints de status para cada componente
 - **RAID Configuration Status** - Status detalhado de operações RAID sempre reportadas como OK
