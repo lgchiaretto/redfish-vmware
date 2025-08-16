@@ -38,7 +38,7 @@ class TaskManager:
                         completed_tasks = []
                         for task_id, task in self.tasks.items():
                             if (task['TaskState'] in ['Completed', 'Exception', 'Killed', 'Cancelled'] and 
-                                current_time - task.get('EndTime', current_time) > 3600):
+                                current_time - (datetime.fromisoformat(task.get('EndTime')).timestamp() if 'EndTime' in task else current_time) > 3600):
                                 completed_tasks.append(task_id)
                         
                         for task_id in completed_tasks:

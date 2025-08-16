@@ -30,16 +30,17 @@ else
     SYSTEMD_SETUP=false
 fi
 
-# Check for debug mode - Default to enabled for Metal3 troubleshooting
-DEBUG_MODE=${REDFISH_DEBUG:-true}
+# Check for debug mode - Default to disabled for cleaner production logs
+DEBUG_MODE=${REDFISH_DEBUG:-false}
 if [[ "$DEBUG_MODE" == "true" ]]; then
     echo -e "${YELLOW}🐛 DEBUG MODE ENABLED - Enhanced Metal3/Ironic debugging${NC}"
     echo -e "${YELLOW}💡 All Redfish requests logged with detailed Metal3 failure analysis${NC}"
     echo -e "${YELLOW}🔍 Critical endpoints monitored: UpdateService, FirmwareInventory, TaskService${NC}"
     echo -e "${YELLOW}⚠️  Special BIOS firmware component logging enabled${NC}"
 else
-    echo -e "${BLUE}📋 PRODUCTION MODE - Standard logging${NC}"
-    echo -e "${YELLOW}💡 Set REDFISH_DEBUG=true for Metal3 failure debugging${NC}"
+    echo -e "${BLUE}📋 PRODUCTION MODE - Clean logging (SSL/TLS noise filtered)${NC}"
+    echo -e "${YELLOW}💡 Set REDFISH_DEBUG=true for detailed Metal3 failure debugging${NC}"
+    echo -e "${GREEN}🛡️ Binary SSL/TLS requests filtered from logs for cleaner output${NC}"
 fi
 
 print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
@@ -104,6 +105,53 @@ install_system_dependencies() {
         fi
     else
         print_success "OpenSSL already installed"
+    fi
+}
+
+# Function to generate SSL certificates
+generate_ssl_certificates() {
+    print_info "Setting up SSL certificates..."
+    
+    local ssl_dir="$PROJECT_ROOT/config/ssl"
+    
+    # Create SSL directory if it doesn't exist
+    if [[ ! -d "$ssl_dir" ]]; then
+        mkdir -p "$ssl_dir"
+        print_info "Created SSL directory: $ssl_dir"
+    fi
+    
+    # Check if certificate generation script exists
+    local cert_script="$ssl_dir/generate_certs.sh"
+    if [[ -f "$cert_script" ]]; then
+        # Check if certificates already exist
+        local need_certs=false
+        local vm_names=$(python3 -c "
+import json
+with open('$PROJECT_ROOT/config/config.json', 'r') as f:
+    config = json.load(f)
+for vm in config['vms']:
+    print(vm['name'])
+")
+        
+        for vm_name in $vm_names; do
+            if [[ ! -f "$ssl_dir/${vm_name}.crt" ]] || [[ ! -f "$ssl_dir/${vm_name}.key" ]]; then
+                need_certs=true
+                break
+            fi
+        done
+        
+        if [[ "$need_certs" == "true" ]]; then
+            print_info "Generating SSL certificates..."
+            chmod +x "$cert_script"
+            cd "$ssl_dir"
+            ./"$(basename "$cert_script")"
+            cd "$PROJECT_ROOT"
+            print_success "SSL certificates generated successfully"
+        else
+            print_success "SSL certificates already exist"
+        fi
+    else
+        print_warning "SSL certificate generation script not found. HTTPS may not work."
     fi
 }
 
@@ -385,57 +433,56 @@ else:
     local vm_name=$(echo "$vm_info" | cut -d: -f1)
     local port=$(echo "$vm_info" | cut -d: -f2)
     
-    echo -e "${YELLOW}🔧 Basic Redfish Operations:${NC}"
+    echo -e "${YELLOW}🔧 Basic Redfish Operations (HTTPS):${NC}"
     echo ""
     echo "# Get service root"
-    echo "curl http://localhost:${port}/redfish/v1/"
+    echo "curl -k https://localhost:${port}/redfish/v1/"
     echo ""
     echo "# Get systems collection"
-    echo "curl http://localhost:${port}/redfish/v1/Systems"
+    echo "curl -k https://localhost:${port}/redfish/v1/Systems"
     echo ""
     echo "# Get specific system info (requires authentication)"
-    echo "curl -u admin:password http://localhost:${port}/redfish/v1/Systems/${vm_name}"
+    echo "curl -k -u admin:password https://localhost:${port}/redfish/v1/Systems/${vm_name}"
     echo ""
     echo "# Power on system"
-    echo "curl -u admin:password -X POST -H \"Content-Type: application/json\" \\"
+    echo "curl -k -u admin:password -X POST -H \"Content-Type: application/json\" \\"
     echo "     -d '{\"ResetType\": \"On\"}' \\"
-    echo "     http://localhost:${port}/redfish/v1/Systems/${vm_name}/Actions/ComputerSystem.Reset"
+    echo "     https://localhost:${port}/redfish/v1/Systems/${vm_name}/Actions/ComputerSystem.Reset"
     echo ""
     echo "# Power off system"
-    echo "curl -u admin:password -X POST -H \"Content-Type: application/json\" \\"
+    echo "curl -k -u admin:password -X POST -H \"Content-Type: application/json\" \\"
     echo "     -d '{\"ResetType\": \"ForceOff\"}' \\"
-    echo "     http://localhost:${port}/redfish/v1/Systems/${vm_name}/Actions/ComputerSystem.Reset"
+    echo "     https://localhost:${port}/redfish/v1/Systems/${vm_name}/Actions/ComputerSystem.Reset"
     echo ""
     echo "# Graceful shutdown"
-    echo "curl -u admin:password -X POST -H \"Content-Type: application/json\" \\"
+    echo "curl -k -u admin:password -X POST -H \"Content-Type: application/json\" \\"
     echo "     -d '{\"ResetType\": \"GracefulShutdown\"}' \\"
-    echo "     http://localhost:${port}/redfish/v1/Systems/${vm_name}/Actions/ComputerSystem.Reset"
+    echo "     https://localhost:${port}/redfish/v1/Systems/${vm_name}/Actions/ComputerSystem.Reset"
     echo ""
-    echo -e "${YELLOW}� Metal3/Ironic Integration Endpoints:${NC}"
+    echo -e "${YELLOW}� Metal3/Ironic Integration Endpoints (HTTPS):${NC}"
     echo ""
     echo "# UpdateService (for firmware updates)"
-    echo "curl http://localhost:${port}/redfish/v1/UpdateService"
+    echo "curl -k https://localhost:${port}/redfish/v1/UpdateService"
     echo ""
     echo "# Software Inventory"
-    echo "curl http://localhost:${port}/redfish/v1/UpdateService/SoftwareInventory"
+    echo "curl -k https://localhost:${port}/redfish/v1/UpdateService/SoftwareInventory"
     echo ""
     echo "# TaskService (for async operations)"
-    echo "curl http://localhost:${port}/redfish/v1/TaskService"
+    echo "curl -k https://localhost:${port}/redfish/v1/TaskService"
     echo ""
     echo "# BIOS settings"
-    echo "curl -u admin:password http://localhost:${port}/redfish/v1/Systems/${vm_name}/Bios"
+    echo "curl -k -u admin:password https://localhost:${port}/redfish/v1/Systems/${vm_name}/Bios"
     echo ""
     echo "# SecureBoot configuration"
-    echo "curl -u admin:password http://localhost:${port}/redfish/v1/Systems/${vm_name}/SecureBoot"
+    echo "curl -k -u admin:password https://localhost:${port}/redfish/v1/Systems/${vm_name}/SecureBoot"
     echo ""
     echo "# Storage Controllers (RAID support)"
-    echo "curl -u admin:password http://localhost:${port}/redfish/v1/Systems/${vm_name}/Storage/1/StorageControllers/1"
+    echo "curl -k -u admin:password https://localhost:${port}/redfish/v1/Systems/${vm_name}/Storage/1/StorageControllers/1"
     echo ""
-    echo -e "${YELLOW}�🔒 Authentication:${NC}"
+    echo -e "${YELLOW}�🔒 Authentication & SSL:${NC}"
     echo "   Username: admin"
     echo "   Password: password"
-    echo ""
-    echo "     http://localhost:${port}/redfish/v1/Systems/${vm_name}/Actions/ComputerSystem.Reset"
+    echo "   Note: Use -k flag to ignore self-signed certificates"
     echo ""
     
     echo -e "${YELLOW}🔧 Service Management:${NC}"
@@ -480,6 +527,9 @@ main() {
     
     # Install dependencies
     install_dependencies
+    
+    # Generate SSL certificates
+    generate_ssl_certificates
     
     # Test VMware connectivity
     if ! test_vmware_connection; then

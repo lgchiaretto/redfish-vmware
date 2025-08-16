@@ -186,6 +186,26 @@ src/
 - **CRITICAL PATH LOGGING** - Logs de WARNING para todos os paths críticos do Metal3
 - **EXCEPTION PREVENTION** - Sistema preventivo contra exceptions que causam "failed" logs
 
+#### 🛡️ Melhorias no Sistema de Logging (NOVO v3.0.2)
+- **SSL/TLS REQUEST FILTERING** - Filtragem inteligente de requests malformados
+- **BINARY DATA DETECTION** - Detecção automática de dados binários para evitar ruído nos logs
+- **CLEAN LOG OUTPUT** - Logs limpos sem caracteres binários ou dados corrompidos
+- **HTTPS/HTTP MISMATCH DETECTION** - Alertas limpos quando há incompatibilidade de protocolo
+- **PRODUCTION LOGGING MODE** - Modo de produção com logs reduzidos e limpos por padrão
+- **DEBUG MODE OPTIONAL** - Modo debug opcional com `REDFISH_DEBUG=true` para troubleshooting
+- **LOG LEVEL MANAGEMENT** - Gerenciamento inteligente de níveis de log (INFO vs DEBUG)
+- **CONNECTION FILTERING** - Filtragem de tentativas de conexão malformadas
+
+#### 🔐 Suporte HTTPS Completo (NOVO v3.0.3)
+- **CERTIFICADOS SSL AUTO-ASSINADOS** - Geração automática de certificados SSL para cada VM
+- **CONFIGURAÇÃO SSL POR VM** - Controle individual de SSL via `disable_ssl` na configuração
+- **HTTPS POR PADRÃO** - Todas as VMs configuradas para usar HTTPS com certificados válidos
+- **FALLBACK HTTP** - Fallback automático para HTTP se SSL falhar
+- **CERTIFICADOS VÁLIDOS POR 365 DIAS** - Certificados com validade de 1 ano
+- **SCRIPT DE GERAÇÃO** - Script automático para renovação de certificados
+- **INTEGRAÇÃO SETUP** - Geração automática de certificados durante o setup
+- **LOGS LIMPOS** - Filtragem inteligente de requests HTTP em portas HTTPS
+
 #### 📋 Sistema de Tasks Inteligente
 - **Task Collection Expandida** - 60+ tarefas históricas para evitar consultas vazias
 - **Firmware Status Endpoints** - `/UpdateStatus` e endpoints de status para cada componente
@@ -490,24 +510,24 @@ spec:
 ### Endpoints Públicos
 ```bash
 # Service Root
-curl http://localhost:8443/redfish/v1/
+curl -k https://localhost:8443/redfish/v1/
 
 # Coleção de Sistemas
-curl http://localhost:8443/redfish/v1/Systems
+curl -k https://localhost:8443/redfish/v1/Systems
 ```
 
 ### Endpoints com Autenticação
 ```bash
 # Informações do Sistema
-curl -u admin:password http://localhost:8443/redfish/v1/Systems/skinner-worker-1
+curl -k -u admin:password https://localhost:8443/redfish/v1/Systems/skinner-worker-1
 
 # Ligar Sistema
-curl -u admin:password -X POST -H "Content-Type: application/json" \
+curl -k -u admin:password -X POST -H "Content-Type: application/json" \
      -d '{"ResetType": "On"}' \
-     http://localhost:8443/redfish/v1/Systems/skinner-worker-1/Actions/ComputerSystem.Reset
+     https://localhost:8443/redfish/v1/Systems/skinner-worker-1/Actions/ComputerSystem.Reset
 
 # Desligar Sistema
-curl -u admin:password -X POST -H "Content-Type: application/json" \
+curl -k -u admin:password -X POST -H "Content-Type: application/json" \
      -d '{"ResetType": "ForceOff"}' \
      http://localhost:8443/redfish/v1/Systems/skinner-worker-1/Actions/ComputerSystem.Reset
 ```

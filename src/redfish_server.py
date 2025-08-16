@@ -85,6 +85,7 @@ class RedfishServer:
         for vm_config in vm_configs:
             vm_name = vm_config['name']
             port = vm_config.get('redfish_port', 8443)
+            disable_ssl = vm_config.get('disable_ssl', False)
             
             try:
                 logger.info(f"🚀 Starting Redfish server for {vm_name} on port {port}")
@@ -96,22 +97,25 @@ class RedfishServer:
                     redfish_handler
                 )
                 
-                # Try to setup SSL if certificates exist
-                ssl_cert_path = f'/home/lchiaret/git/ipmi-vmware/config/ssl/{vm_name}.crt'
-                ssl_key_path = f'/home/lchiaret/git/ipmi-vmware/config/ssl/{vm_name}.key'
-                
-                try:
-                    import os
-                    if os.path.exists(ssl_cert_path) and os.path.exists(ssl_key_path):
-                        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-                        context.load_cert_chain(ssl_cert_path, ssl_key_path)
-                        server.socket = context.wrap_socket(server.socket, server_side=True)
-                        logger.info(f"🔒 HTTPS enabled for {vm_name} with SSL certificates")
-                    else:
-                        logger.warning(f"⚠️  No SSL certificates found for {vm_name}, running HTTP only")
-                        logger.warning(f"   Expected: {ssl_cert_path} and {ssl_key_path}")
-                except Exception as ssl_error:
-                    logger.warning(f"⚠️  HTTPS setup failed for {vm_name}, falling back to HTTP: {ssl_error}")
+                # Setup SSL if not disabled and certificates exist
+                if not disable_ssl:
+                    ssl_cert_path = f'/home/lchiaret/git/ipmi-vmware/config/ssl/{vm_name}.crt'
+                    ssl_key_path = f'/home/lchiaret/git/ipmi-vmware/config/ssl/{vm_name}.key'
+                    
+                    try:
+                        import os
+                        if os.path.exists(ssl_cert_path) and os.path.exists(ssl_key_path):
+                            context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+                            context.load_cert_chain(ssl_cert_path, ssl_key_path)
+                            server.socket = context.wrap_socket(server.socket, server_side=True)
+                            logger.info(f"🔒 HTTPS enabled for {vm_name} with SSL certificates")
+                        else:
+                            logger.warning(f"⚠️  No SSL certificates found for {vm_name}, running HTTP only")
+                            logger.warning(f"   Expected: {ssl_cert_path} and {ssl_key_path}")
+                    except Exception as ssl_error:
+                        logger.warning(f"⚠️  HTTPS setup failed for {vm_name}, falling back to HTTP: {ssl_error}")
+                else:
+                    logger.info(f"📄 HTTP mode enabled for {vm_name} (SSL disabled in config)")
                 
                 # Start server in thread
                 server_thread = threading.Thread(

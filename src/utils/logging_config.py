@@ -11,7 +11,7 @@ import os
 def setup_logging():
     """Setup logging configuration"""
     # Configure logging with enhanced DEBUG level for detailed communication tracking
-    debug_env = os.getenv('REDFISH_DEBUG', 'true').lower()  # Default to debug mode
+    debug_env = os.getenv('REDFISH_DEBUG', 'false').lower()  # Default to production mode
     debug_enabled = debug_env in ['true', '1', 'yes', 'on']
     log_level = logging.DEBUG if debug_enabled else logging.INFO
 
@@ -19,6 +19,7 @@ def setup_logging():
     print(f"🐛 Debug Enabled: {debug_enabled}")
     print(f"🐛 Log Level: {log_level}")
     print(f"🔍 Enhanced Metal3/Ironic compatibility logging enabled")
+    print(f"🛡️ SSL/TLS request filtering enabled for cleaner logs")
 
     # Setup log file path - try multiple locations
     log_paths = [
@@ -42,9 +43,15 @@ def setup_logging():
     if log_file:
         handlers.append(logging.FileHandler(log_file))
 
+    # Use different format for production vs debug
+    if debug_enabled:
+        log_format = '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+    else:
+        log_format = '%(asctime)s - %(levelname)s - %(message)s'
+
     logging.basicConfig(
         level=log_level,
-        format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
+        format=log_format,
         handlers=handlers
     )
 
