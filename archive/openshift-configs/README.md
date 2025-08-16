@@ -26,7 +26,7 @@ kubectl apply -f skinner-master-2-bmh.yaml
 
 ```bash
 # Test each BMC
-ipmitool -I lan -H 192.168.86.50 -p 623 -U admin -P admin chassis power status
-ipmitool -I lan -H 192.168.86.51 -p 623 -U admin -P admin chassis power status
-ipmitool -I lan -H 192.168.86.52 -p 623 -U admin -P admin chassis power status
+ipmitool -I lanplus -H 192.168.86.50 -p 623 -U admin -P admin chassis power status
+ipmitool -I lanplus -H 192.168.86.51 -p 623 -U admin -P admin chassis power status
+ipmitool -I lanplus -H 192.168.86.52 -p 623 -U admin -P admin chassis power status
 ```

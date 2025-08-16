@@ -169,7 +169,7 @@ done)
 \`\`\`bash
 # Test each BMC
 $(for i in "${!BMC_IPS[@]}"; do
-    echo "ipmitool -I lan -H ${BASE_IP}.${BMC_IPS[$i]} -p 623 -U admin -P admin chassis power status"
+    echo "ipmitool -I lanplus -H ${BASE_IP}.${BMC_IPS[$i]} -p 623 -U admin -P admin chassis power status"
 done)
 \`\`\`
 EOF

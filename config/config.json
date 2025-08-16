@@ -8,59 +8,24 @@
   },
   "vms": [
     {
-      "name": "skinner-master-0",
-      "vcenter_host": "chiaretto-vcsa01.chiaret.to",
-      "vcenter_user": "administrator@chiaretto.local",
-      "vcenter_password": "VMware1!VMware1!",
-      "port": 623,
-      "ipmi_user": "admin",
-      "ipmi_password": "password"
-    },
-    {
-      "name": "skinner-master-1",
-      "vcenter_host": "chiaretto-vcsa01.chiaret.to", 
-      "vcenter_user": "administrator@chiaretto.local",
-      "vcenter_password": "VMware1!VMware1!",
-      "port": 624,
-      "ipmi_user": "admin",
-      "ipmi_password": "password"
-    },
-    {
-      "name": "skinner-master-2",
-      "vcenter_host": "chiaretto-vcsa01.chiaret.to",
-      "vcenter_user": "administrator@chiaretto.local",
-      "vcenter_password": "VMware1!VMware1!",
-      "port": 625,
-      "ipmi_user": "admin",
-      "ipmi_password": "password"
-    },
-    {
       "name": "skinner-worker-1",
       "vcenter_host": "chiaretto-vcsa01.chiaret.to",
       "vcenter_user": "administrator@chiaretto.local",
       "vcenter_password": "VMware1!VMware1!",
-      "port": 626,
-      "ipmi_user": "admin",
-      "ipmi_password": "password"
+      "redfish_port": 8443,
+      "redfish_user": "admin",
+      "redfish_password": "password",
+      "disable_ssl": true
     },
     {
       "name": "skinner-worker-2",
       "vcenter_host": "chiaretto-vcsa01.chiaret.to",
       "vcenter_user": "administrator@chiaretto.local",
       "vcenter_password": "VMware1!VMware1!",
-      "port": 627,
-      "ipmi_user": "admin",
-      "ipmi_password": "password"
+      "redfish_port": 8444,
+      "redfish_user": "admin",
+      "redfish_password": "password",
+      "disable_ssl": true
     }
-  ],
-  "iso_repository": {
-    "datastore": "SSD2TB",
-    "iso_path": "ISO",
-    "available_isos": [
-      "rhel-8.10-x86_64-dvd.iso",
-      "CentOS-7-x86_64-Minimal-2009.iso",
-      "ubuntu-20.04.6-desktop-amd64.iso",
-      "fedora-38-1.6-x86_64-netinst.iso"
-    ]
-  }
+  ]
 }

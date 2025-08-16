@@ -1,317 +1,440 @@
-# IPMI VMware Bridge
+# Redfish VMware Server
 
-A Python application that creates a bridge between IPMI commands and VMware vSphere operations. This allows you to manage virtual machines using standard IPMI tools like `ipmitool`, treating VMs as if they were physical servers with BMCs (Baseboard Management Controllers).
+Este projeto fornece um servidor **Redfish** que atua como bridge entre chamadas Redfish (REST API) e operações VMware vSphere, permitindo controlar VMs VMware através do protocolo Redfish padrão da indústria.
 
-## Features
+## 🎯 Funcionalidades
 
-- **IPMI Protocol Support**: Receives and processes standard IPMI commands
-- **VMware Integration**: Translates IPMI commands to VMware vSphere API calls
-- **Multi-VM Support**: Manages multiple VMs simultaneously with different IPMI endpoints
-- **Systemd Integration**: Runs as a proper system service
-- **Security**: Configurable authentication and SSL options
-- **Logging**: Comprehensive logging for monitoring and debugging
+- **Servidor Redfish completo** - Implementa endpoints Redfish padrão
+- **Controle de Power Management** - Liga, desliga, reinicia VMs 
+- **Múltiplas VMs simultâneas** - Cada VM em uma porta diferente
+- **Integração com systemd** - Controle de serviço nativo do Linux
+- **Compatível com OpenShift** - Funciona como BMC para bare metal provisioning
+- **Logging detalhado** - Suporte a debug mode para troubleshooting
+- **Auto-descoberta** - Lista sistemas disponíveis dinamicamente
 
-## Supported IPMI Commands
+## 🏗️ Arquitetura
 
-- **Power Control**: Power on, power off, reset, power cycle
-- **Chassis Status**: Get power state and system information
-- **Boot Device**: Set boot order (disk, network, CD-ROM)
-- **Sensor Reading**: Simulated sensor data (temperature, voltage, fan speed)
-- **System Information**: Hardware and firmware details
-
-## Prerequisites
-
-- Python 3.7 or higher
-- VMware vSphere/ESXi environment
-- Network connectivity to vCenter/ESXi host
-- Root access for installation (service management)
-
-## Installation
-
-### 1. Quick Installation
-
-Run the configuration script as root:
-
-```bash
-sudo ./configure-ipmi.sh
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Redfish       │    │   Redfish        │    │   VMware        │
+│   Client        │───▶│   VMware         │───▶│   vSphere       │
+│ (OpenShift/curl)│    │   Server         │    │   API           │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
 ```
 
-This will:
-- Install Python dependencies
-- Create system user and directories
-- Copy files to appropriate locations
-- Configure systemd service
-- Set up firewall rules
+### Componentes
 
-### 2. Manual Installation
+- **redfish_server.py** - Servidor HTTP principal com endpoints Redfish
+- **vmware_client.py** - Cliente VMware vSphere para operações nas VMs
+- **config.json** - Configuração das VMs e credenciais
+- **systemd service** - Integração nativa com systemd
+- **setup.sh** - Script de instalação e configuração
 
-If you prefer manual installation:
+## 📋 Pré-requisitos
+
+- **Python 3.8+**
+- **VMware vCenter/ESXi** - Acesso à API do vSphere
+- **Linux com systemd** - Para controle de serviço
+- **Acesso root** - Para configuração de systemd e firewall
+
+## 🚀 Instalação
+
+### 1. Clonagem e Configuração
 
 ```bash
-# Install Python dependencies
-pip3 install -r requirements.txt
-
-# Create directories
-sudo mkdir -p /opt/ipmi-vmware-bridge
-sudo mkdir -p /etc/ipmi-vmware-bridge
-
-# Copy files
-sudo cp *.py /opt/ipmi-vmware-bridge/
-sudo cp config.json /etc/ipmi-vmware-bridge/
-sudo cp ipmi-vmware-bridge.service /etc/systemd/system/
-
-# Create service user
-sudo useradd --system --home /opt/ipmi-vmware-bridge ipmi
-
-# Set permissions
-sudo chown -R ipmi:ipmi /opt/ipmi-vmware-bridge
-sudo chown -R ipmi:ipmi /etc/ipmi-vmware-bridge
-
-# Enable service
-sudo systemctl daemon-reload
-sudo systemctl enable ipmi-vmware-bridge
+cd /home/lchiaret/git/ipmi-vmware/redfish
+chmod +x setup.sh
 ```
 
-## Configuration
+### 2. Configuração das VMs
 
-### 1. VMware Configuration
-
-Edit `/etc/ipmi-vmware-bridge/config.json`:
+Edite o arquivo `config/config.json`:
 
 ```json
 {
   "vmware": {
-    "host": "chiaretto-vcsa01.chiaret.to",
-    "user": "administrator@chiaretto.local",
-    "password": "VMware1!VMware1!",
+    "host": "seu-vcenter.dominio.com",
+    "user": "administrator@vsphere.local", 
+    "password": "sua-senha",
     "port": 443,
     "disable_ssl": true
-  }
-}
-```
-
-### 2. VM Configuration
-
-Configure each VM that should have an IPMI interface:
-
-```json
-{
+  },
   "vms": [
     {
-      "vm_name": "test-vm-01",
-      "ipmi_address": "0.0.0.0",
-      "ipmi_port": 623,
-      "ipmi_user": "admin",
-      "ipmi_password": "password"
+      "name": "vm-master-0",
+      "vcenter_host": "seu-vcenter.dominio.com",
+      "vcenter_user": "administrator@vsphere.local",
+      "vcenter_password": "sua-senha",
+      "redfish_port": 8443,
+      "redfish_user": "admin",
+      "redfish_password": "password",
+      "disable_ssl": true
     }
   ]
 }
 ```
 
-**Configuration Parameters:**
-- `vm_name`: Exact name of the VM in vSphere
-- `ipmi_address`: IP address to bind to (0.0.0.0 for all interfaces)
-- `ipmi_port`: UDP port for IPMI (standard is 623, use different ports for multiple VMs)
-- `ipmi_user`: Username for IPMI authentication
-- `ipmi_password`: Password for IPMI authentication
-
-## Usage
-
-### Starting the Service
+### 3. Instalação Automática
 
 ```bash
-# Start the service
-sudo systemctl start ipmi-vmware-bridge
-
-# Check status
-sudo systemctl status ipmi-vmware-bridge
-
-# View logs
-sudo journalctl -u ipmi-vmware-bridge -f
+sudo ./setup.sh
 ```
 
-### Using IPMI Commands
+O script irá:
+- ✅ Instalar dependências Python
+- ✅ Testar conectividade VMware
+- ✅ Configurar serviço systemd
+- ✅ Configurar firewall
+- ✅ Iniciar o serviço
 
-Once the service is running, you can use standard IPMI tools:
+## 🔧 Uso
+
+### Controle do Serviço
 
 ```bash
-# Get chassis status
-ipmitool -I lanplus -H localhost -p 623 -U admin -P password chassis status
+# Status do serviço
+sudo systemctl status redfish-vmware-server
 
-# Power on VM
-ipmitool -I lanplus -H localhost -p 623 -U admin -P password power on
+# Iniciar serviço
+sudo systemctl start redfish-vmware-server
 
-# Power off VM
-ipmitool -I lanplus -H localhost -p 623 -U admin -P password power off
+# Parar serviço
+sudo systemctl stop redfish-vmware-server
 
-# Reset VM
-ipmitool -I lanplus -H localhost -p 623 -U admin -P password power reset
+# Reiniciar serviço
+sudo systemctl restart redfish-vmware-server
 
-# Get sensor readings
-ipmitool -I lanplus -H localhost -p 623 -U admin -P password sensor list
-
-# Set boot device to network
-ipmitool -I lanplus -H localhost -p 623 -U admin -P password chassis bootdev pxe
-
-# Set boot device to disk
-ipmitool -I lanplus -H localhost -p 623 -U admin -P password chassis bootdev disk
+# Logs em tempo real
+sudo journalctl -u redfish-vmware-server -f
 ```
 
-### Remote Access
+### Operações Redfish
 
-To access from remote machines, replace `localhost` with the server's IP address:
+#### Descoberta de Sistemas
 
 ```bash
-ipmitool -I lanplus -H 192.168.1.100 -p 623 -U admin -P password chassis status
+# Service Root
+curl http://localhost:8443/redfish/v1/
+
+# Lista de sistemas disponíveis
+curl http://localhost:8443/redfish/v1/Systems
+
+# Informações de sistema específico
+curl http://localhost:8443/redfish/v1/Systems/vm-master-0
 ```
 
-## Testing
-
-Run the test suite to verify installation:
+#### Controle de Power
 
 ```bash
-python3 test_installation.py
+# Ligar VM
+curl -X POST -H "Content-Type: application/json" \
+     -d '{"ResetType": "On"}' \
+     http://localhost:8443/redfish/v1/Systems/vm-master-0/Actions/ComputerSystem.Reset
+
+# Desligar VM (força)
+curl -X POST -H "Content-Type: application/json" \
+     -d '{"ResetType": "ForceOff"}' \
+     http://localhost:8443/redfish/v1/Systems/vm-master-0/Actions/ComputerSystem.Reset
+
+# Desligamento gracioso
+curl -X POST -H "Content-Type: application/json" \
+     -d '{"ResetType": "GracefulShutdown"}' \
+     http://localhost:8443/redfish/v1/Systems/vm-master-0/Actions/ComputerSystem.Reset
+
+# Reiniciar VM
+curl -X POST -H "Content-Type: application/json" \
+     -d '{"ResetType": "ForceRestart"}' \
+     http://localhost:8443/redfish/v1/Systems/vm-master-0/Actions/ComputerSystem.Reset
+
+# Ciclo de power
+curl -X POST -H "Content-Type: application/json" \
+     -d '{"ResetType": "PowerCycle"}' \
+     http://localhost:8443/redfish/v1/Systems/vm-master-0/Actions/ComputerSystem.Reset
 ```
 
-This will test:
-- Configuration file validity
-- VMware connectivity
-- Python dependencies
-- IPMI port availability
-- File permissions
+#### Tipos de Reset Suportados
 
-## Troubleshooting
+| Tipo | Descrição | Ação VMware |
+|------|-----------|-------------|
+| `On` | Liga o sistema | `PowerOnVM_Task()` |
+| `ForceOff` | Desliga força | `PowerOffVM_Task()` |
+| `GracefulShutdown` | Desligamento gracioso | `ShutdownGuest()` |
+| `GracefulRestart` | Reinício gracioso | `RebootGuest()` |
+| `ForceRestart` | Reinício forçado | `ResetVM_Task()` |
+| `PowerCycle` | Ciclo de power | Power Off + Power On |
 
-### Common Issues
+## 🧪 Testes
 
-1. **Connection Refused**
-   ```
-   Error: Unable to establish IPMI v2 / RMCP+ session
-   ```
-   - Check if service is running: `systemctl status ipmi-vmware-bridge`
-   - Verify port is not blocked by firewall
-   - Check if port is already in use: `netstat -ulpn | grep 623`
-
-2. **VMware Authentication Failed**
-   ```
-   Error connecting to VMware: Login failed
-   ```
-   - Verify VMware credentials in config.json
-   - Check network connectivity to vCenter/ESXi
-   - Ensure user has sufficient privileges
-
-3. **VM Not Found**
-   ```
-   VM test-vm-01 not found
-   ```
-   - Check VM name spelling in config.json
-   - Verify VM exists in vSphere inventory
-   - Check if VM is in the correct datacenter/folder
-
-4. **Permission Denied**
-   ```
-   Permission denied on port 623
-   ```
-   - Ports below 1024 require root privileges
-   - Service should run as root or with CAP_NET_BIND_SERVICE capability
-   - Check systemd service configuration
-
-### Logging
-
-Logs are available in multiple locations:
+### Teste de Conectividade
 
 ```bash
-# Service logs
-journalctl -u ipmi-vmware-bridge -f
-
-# Application logs
-tail -f /var/log/ipmi-vmware-bridge.log
-
-# System logs
-tail -f /var/log/syslog | grep ipmi
+# Teste básico de conectividade VMware
+python3 tests/test_connectivity.py
 ```
 
-### Debug Mode
+### Teste Completo dos Endpoints
 
-For verbose logging, edit the configuration:
+```bash
+# Executar todos os testes
+./tests/test_redfish.sh
 
-```json
-{
-  "logging": {
-    "level": "DEBUG"
-  }
-}
+# Apenas teste de power cycle
+./tests/test_redfish.sh power
+
+# Verificar status do serviço
+./tests/test_redfish.sh status
+
+# Monitorar logs
+./tests/test_redfish.sh logs
 ```
 
-## Security Considerations
+## 🐛 Debug
 
-- **Network Security**: IPMI traffic is unencrypted by default
-- **Authentication**: Use strong passwords for IPMI users
-- **Firewall**: Restrict access to IPMI ports (623-630/udp)
-- **SSL**: Enable SSL verification for VMware connections in production
-- **User Isolation**: Service runs as unprivileged user with minimal permissions
+### Ativar Modo Debug
 
-## Advanced Configuration
+```bash
+# Ativar debug permanente
+export REDFISH_DEBUG=true
+sudo systemctl restart redfish-vmware-server
 
-### Multiple VMs with Port Mapping
-
-```json
-{
-  "vms": [
-    {
-      "vm_name": "master-01",
-      "ipmi_port": 623,
-      "ipmi_user": "admin",
-      "ipmi_password": "secret1"
-    },
-    {
-      "vm_name": "master-02", 
-      "ipmi_port": 624,
-      "ipmi_user": "admin",
-      "ipmi_password": "secret2"
-    },
-    {
-      "vm_name": "worker-01",
-      "ipmi_port": 625,
-      "ipmi_user": "admin",
-      "ipmi_password": "secret3"
-    }
-  ]
-}
+# Ou editar o service file
+sudo systemctl edit redfish-vmware-server
 ```
 
-### Custom Sensor Configuration
+Adicionar:
+```ini
+[Service]
+Environment=REDFISH_DEBUG=true
+```
 
-The bridge simulates hardware sensors. You can customize sensor readings by modifying the `VMwareBMC` class in `ipmi_vmware_bridge.py`.
+### Logs Detalhados
 
-### Boot Device Mapping
+```bash
+# Logs do serviço
+sudo journalctl -u redfish-vmware-server -f
 
-The bridge supports setting boot devices:
-- `disk`: Boot from hard disk
-- `pxe`/`network`: PXE network boot
-- `cdrom`: Boot from CD-ROM/ISO
-- `bios`: Enter BIOS setup
+# Logs com maior detalhamento
+sudo journalctl -u redfish-vmware-server --since "1 hour ago" -o verbose
+```
 
-## Integration with OpenShift/Kubernetes
+## 🔒 Segurança
 
-This bridge is particularly useful for OpenShift bare metal deployments where you need BMC functionality for virtual machines. Configure your BareMetalHost resources to point to the IPMI endpoints provided by this bridge.
+### Firewall
 
-## Contributing
+O script de setup configura automaticamente as regras de firewall para as portas configuradas:
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+```bash
+# Firewalld (RHEL/CentOS/Fedora)
+sudo firewall-cmd --permanent --add-port=8443/tcp
+sudo firewall-cmd --reload
 
-## License
+# UFW (Ubuntu/Debian)
+sudo ufw allow 8443/tcp
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+# Iptables (manual)
+sudo iptables -I INPUT -p tcp --dport 8443 -j ACCEPT
+```
 
-## Support
+### Autenticação
 
-For issues and questions:
-1. Check the troubleshooting section above
-2. Review the logs for error messages
-3. Test connectivity with the provided test script
-4. Open an issue with detailed information about your environment
+Atualmente implementa autenticação básica simples. Para produção, considere:
+- Implementar autenticação real com validação de credenciais
+- Adicionar suporte a HTTPS/TLS
+- Implementar rate limiting
+- Adicionar logs de auditoria
+
+## 📊 Monitoramento
+
+### Status do Serviço
+
+```bash
+# Verificar se está executando
+systemctl is-active redfish-vmware-server
+
+# Informações detalhadas
+systemctl status redfish-vmware-server
+
+# Uso de recursos
+top -p $(pgrep -f redfish_server.py)
+```
+
+### Métricas de Rede
+
+```bash
+# Portas em uso
+netstat -tlnp | grep python3
+
+# Conexões ativas
+ss -tulpn | grep :844
+```
+
+## ⚡ Performance
+
+### Configurações Recomendadas
+
+Para ambientes de produção:
+
+1. **Múltiplas Workers**: Considere usar gunicorn ao invés do servidor HTTP built-in
+2. **Load Balancer**: Para múltiplas instâncias
+3. **Cache**: Implementar cache para respostas de status
+4. **Connection Pooling**: Para conexões VMware
+
+### Limites
+
+- **Conexões simultâneas**: Limitado pelo GIL do Python
+- **VMs por instância**: Recomendado máximo 50 VMs
+- **Timeout**: 60 segundos para operações VMware
+
+## 🔄 Comparação com IPMI
+
+| Aspecto | IPMI | Redfish |
+|---------|------|---------|
+| Protocolo | Binário sobre UDP | REST API sobre HTTP |
+| Autenticação | Session-based | HTTP Auth |
+| Descoberta | Broadcast | Service Discovery |
+| Dados | Proprietary | JSON padronizado |
+| Ferramentas | ipmitool | curl, REST clients |
+| Firewall | Porta 623 | Portas HTTP custom |
+
+### Migração do IPMI
+
+Se você já usa o servidor IPMI deste projeto:
+
+1. **Paralelo**: Execute ambos simultaneamente
+2. **Gradual**: Migre VMs aos poucos
+3. **Teste**: Valide funcionalidade antes de desativar IPMI
+4. **OpenShift**: Atualize BMH configs para usar Redfish
+
+## 🚨 Troubleshooting
+
+### Problemas Comuns
+
+#### Serviço não inicia
+
+```bash
+# Verificar logs
+sudo journalctl -u redfish-vmware-server --since "5 minutes ago"
+
+# Verificar configuração
+python3 -m json.tool config/config.json
+
+# Testar conectividade VMware
+python3 tests/test_connectivity.py
+```
+
+#### Conexão VMware falha
+
+```bash
+# Verificar credenciais
+# Verificar conectividade de rede
+ping seu-vcenter.dominio.com
+
+# Testar SSL
+openssl s_client -connect seu-vcenter.dominio.com:443
+```
+
+#### Porta ocupada
+
+```bash
+# Verificar portas em uso
+netstat -tlnp | grep :8443
+
+# Matar processo usando a porta
+sudo fuser -k 8443/tcp
+```
+
+#### VM não encontrada
+
+```bash
+# Listar VMs disponíveis no vCenter
+python3 -c "
+import sys; sys.path.insert(0, 'src')
+from vmware_client import VMwareClient
+import json
+config = json.load(open('config/config.json'))
+vm = config['vms'][0]
+client = VMwareClient(vm['vcenter_host'], vm['vcenter_user'], vm['vcenter_password'])
+for vm in client.list_vms():
+    print(vm.name)
+"
+```
+
+## 📝 Logs
+
+### Localização dos Logs
+
+- **Journal**: `sudo journalctl -u redfish-vmware-server`
+- **Arquivo**: `/var/log/redfish-vmware-server.log` (se root)
+- **Home**: `~/redfish-vmware-server.log` (se usuário)
+- **Local**: `./redfish-vmware-server.log`
+
+### Níveis de Log
+
+- **INFO**: Operações normais
+- **DEBUG**: Detalhes de protocolo (com REDFISH_DEBUG=true)
+- **WARNING**: Problemas não críticos
+- **ERROR**: Erros que impedem operação
+
+## 🔮 Roadmap
+
+### Próximas Funcionalidades
+
+- [ ] **Boot Device Control** - Suporte a configuração de boot order
+- [ ] **Virtual Media** - Mount/unmount de ISOs via Redfish
+- [ ] **Sensor Data** - Exposição de métricas de hardware virtual
+- [ ] **Event Subscriptions** - Notificações de mudanças de estado
+- [ ] **HTTPS/TLS** - Comunicação segura
+- [ ] **Authentication** - Sistema de autenticação robusto
+- [ ] **Multi-tenant** - Suporte a múltiplos vCenters
+- [ ] **Chassis Management** - Endpoints de chassis e cooling
+
+### Melhorias de Performance
+
+- [ ] **Async/Await** - Conversão para programação assíncrona
+- [ ] **Connection Pooling** - Reutilização de conexões VMware
+- [ ] **Caching** - Cache de status e informações
+- [ ] **Metrics** - Integração com Prometheus
+
+## 🤝 Contribuição
+
+Para contribuir com o projeto:
+
+1. Fork o repositório
+2. Crie uma branch para sua feature
+3. Implemente e teste suas mudanças
+4. Submeta um Pull Request
+
+### Estrutura do Código
+
+```
+redfish/
+├── src/
+│   ├── redfish_server.py    # Servidor HTTP principal
+│   └── vmware_client.py     # Cliente VMware
+├── config/
+│   ├── config.json          # Configuração das VMs
+│   └── *.service           # Arquivos systemd
+├── tests/
+│   ├── test_redfish.sh     # Testes funcionais
+│   └── test_connectivity.py # Testes de conectividade
+├── setup.sh                # Script de instalação
+├── requirements.txt        # Dependências Python
+└── README.md              # Esta documentação
+```
+
+## 📄 Licença
+
+Este projeto está sob a mesma licença do projeto IPMI original.
+
+## 🆘 Suporte
+
+Para suporte e dúvidas:
+
+1. **Logs**: Sempre inclua logs relevantes
+2. **Configuração**: Sanitize e inclua config.json
+3. **Ambiente**: Descreva SO, Python version, VMware version
+4. **Reprodução**: Passos para reproduzir o problema
+
+---
+
+**Redfish VMware Server** - Controle suas VMs VMware através de APIs REST padrão! 🚀

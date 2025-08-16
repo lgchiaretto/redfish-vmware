@@ -1,12 +1,14 @@
 #!/bin/bash
 
-# IPMI VMware Bridge - Complete Setup Script
-# This script configures the entire IPMI bridge with SystemD integration
+# Redfish VMware Server - Complete Setup Script
+# This script configures the entire Redfish server with SystemD integration
+# Updated: 2025-08-16 - Added Metal3/Ironic compatibility with UpdateService, TaskService, BIOS, SecureBoot, and RAID endpoints
 
 set -e  # Exit on any error
 
 # Colors for better output
-RED='\033[0;31mm'
+RED='\033[0;31m'
+GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
@@ -15,8 +17,8 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
 
-echo -e "${BLUE}🚀 IPMI VMware Bridge - Complete Setup${NC}"
-echo -e "${BLUE}=====================================${NC}"
+echo -e "${BLUE}🚀 Redfish VMware Server - Complete Setup (Metal3 Compatible)${NC}"
+echo -e "${BLUE}=============================================================${NC}"
 echo ""
 
 # Check if running as root for SystemD operations
@@ -28,12 +30,20 @@ else
     SYSTEMD_SETUP=false
 fi
 
+# Check for debug mode - Default to enabled for Metal3 troubleshooting
+DEBUG_MODE=${REDFISH_DEBUG:-true}
+if [[ "$DEBUG_MODE" == "true" ]]; then
+    echo -e "${YELLOW}🐛 DEBUG MODE ENABLED - Enhanced Metal3/Ironic compatibility logging${NC}"
+    echo -e "${YELLOW}💡 All Redfish requests will be logged in detail for troubleshooting${NC}"
+else
+    echo -e "${BLUE}📋 PRODUCTION MODE - Standard logging${NC}"
+    echo -e "${YELLOW}💡 Set REDFISH_DEBUG=true for detailed debugging${NC}"
+fi
 
 print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-
 
 # Function to run command with sudo if needed
 run_sudo() {
@@ -44,180 +54,501 @@ run_sudo() {
     fi
 }
 
-echo -e "${BLUE}📂 Project Structure:${NC}"
-echo "   📁 Source Code: $PROJECT_ROOT/src/"
-echo "   📁 Configuration: $PROJECT_ROOT/config/"
-echo "   📁 Tests: $PROJECT_ROOT/tests/"
-echo "   📁 Documentation: $PROJECT_ROOT/docs/"
-echo ""
-
-# 1. Check Python dependencies
-echo -e "${BLUE}🐍 Checking Python Dependencies...${NC}"
-python3 -c "import pyghmi, pyvmomi" 2>/dev/null || {
-    echo -e "${YELLOW}📦 Installing required Python packages...${NC}"
-    pip3 install pyghmi pyvmomi
-}
-echo -e "${GREEN}✅ Python dependencies OK${NC}"
-
-# 2. Validate configuration
-echo -e "${BLUE}🔧 Validating Configuration...${NC}"
-if [[ ! -f "$PROJECT_ROOT/config/config.json" ]]; then
-    echo -e "${RED}❌ Configuration file not found: $PROJECT_ROOT/config/config.json${NC}"
-    exit 1
-fi
-
-# Test configuration syntax
-python3 -c "import json; json.load(open('$PROJECT_ROOT/config/config.json'))" || {
-    echo -e "${RED}❌ Invalid JSON in configuration file${NC}"
-    exit 1
-}
-echo -e "${GREEN}✅ Configuration file is valid${NC}"
-
-# 3. Set up logging directory
-echo -e "${BLUE}📝 Setting up logging...${NC}"
-run_sudo mkdir -p /var/log
-run_sudo touch /var/log/ipmi-vmware-bridge.log
-run_sudo chmod 644 /var/log/ipmi-vmware-bridge.log
-echo -e "${GREEN}✅ Log file created: /var/log/ipmi-vmware-bridge.log${NC}"
-
-# 4. Stop existing service if running
-echo -e "${BLUE}🛑 Checking existing service...${NC}"
-if run_sudo systemctl is-active --quiet ipmi-vmware-bridge 2>/dev/null; then
-    echo -e "${YELLOW}🔄 Stopping existing service...${NC}"
-    run_sudo systemctl stop ipmi-vmware-bridge
-    echo -e "${GREEN}✅ Service stopped${NC}"
-else
-    echo -e "${GREEN}✅ No existing service running${NC}"
-fi
-
-# 5. Install SystemD service
-echo -e "${BLUE}⚙️ Installing SystemD service...${NC}"
-
-# Remove old service file if exists
-if [[ -f /etc/systemd/system/ipmi-vmware-bridge.service ]]; then
-    echo -e "${YELLOW}🗑️ Removing old service file...${NC}"
-    run_sudo rm /etc/systemd/system/ipmi-vmware-bridge.service
-fi
-
-# Copy new service file
-echo -e "${YELLOW}📋 Installing new service configuration...${NC}"
-run_sudo cp "$PROJECT_ROOT/config/ipmi-vmware-bridge.service" /etc/systemd/system/
-
-# Update service file with current project path
-echo -e "${YELLOW}🔧 Updating service paths...${NC}"
-run_sudo sed -i "s|/home/lchiaret/git/ipmi-vmware|$PROJECT_ROOT|g" /etc/systemd/system/ipmi-vmware-bridge.service
-
-# Reload SystemD
-echo -e "${YELLOW}🔄 Reloading SystemD daemon...${NC}"
-run_sudo systemctl daemon-reload
-
-echo -e "${GREEN}✅ SystemD service installed${NC}"
-
-# 6. Enable and start service
-echo -e "${BLUE}🚀 Starting IPMI Bridge Service...${NC}"
-
-# Enable service for auto-start
-run_sudo systemctl enable ipmi-vmware-bridge
-echo -e "${GREEN}✅ Service enabled for auto-start${NC}"
-
-# Start service
-run_sudo systemctl start ipmi-vmware-bridge
-echo -e "${GREEN}✅ Service started${NC}"
-
-# 7. Verify service status
-echo -e "${BLUE}📊 Service Status:${NC}"
-sleep 2  # Give service time to start
-
-if run_sudo systemctl is-active --quiet ipmi-vmware-bridge; then
-    echo -e "${GREEN}✅ Service is running${NC}"
-    
-    # Show service details
-    echo ""
-    echo -e "${BLUE}📋 Service Details:${NC}"
-    run_sudo systemctl status ipmi-vmware-bridge --no-pager -l | head -15
-    
-    echo ""
-    echo -e "${BLUE}🔌 IPMI Ports Status:${NC}"
-    ss -tuln | grep -E ':(623|624|625|626)' || echo -e "${YELLOW}⚠️ IPMI ports not yet bound (service may still be starting)${NC}"
-    
-else
-    echo -e "${RED}❌ Service failed to start${NC}"
-    echo -e "${YELLOW}📝 Service logs:${NC}"
-    run_sudo journalctl -u ipmi-vmware-bridge --since "1 minute ago" --no-pager
-    exit 1
-fi
-
-# 8. Test IPMI connectivity
-echo ""
-echo -e "${BLUE}🧪 Testing IPMI Connectivity...${NC}"
-sleep 3  # Give more time for ports to bind
-
-echo -e "${YELLOW}🔍 Testing port 623 with correct password...${NC}"
-timeout 10 ipmitool -I lan -H 127.0.0.1 -p 623 -U admin -P password mc info 2>/dev/null && {
-    echo -e "${GREEN}✅ IPMI test successful!${NC}"
-} || {
-    echo -e "${YELLOW}⚠️ IPMI test failed - this is normal if service is still initializing${NC}"
-    echo -e "${YELLOW}💡 Check logs: sudo journalctl -u ipmi-vmware-bridge -f${NC}"
+# Function to check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
 }
 
-# 9. Show useful commands
-echo ""
-echo -e "${BLUE}🎯 Management Commands:${NC}"
-echo -e "${GREEN}# View service status:${NC}"
-echo "   sudo systemctl status ipmi-vmware-bridge"
-echo ""
-echo -e "${GREEN}# View real-time logs:${NC}"
-echo "   sudo journalctl -u ipmi-vmware-bridge -f"
-echo ""
-echo -e "${GREEN}# Restart service:${NC}"
-echo "   sudo systemctl restart ipmi-vmware-bridge"
-echo ""
-echo -e "${GREEN}# Stop service:${NC}"
-echo "   sudo systemctl stop ipmi-vmware-bridge"
-echo ""
-echo -e "${GREEN}# Test IPMI (use password 'password'):${NC}"
-echo "   ipmitool -I lan -H 127.0.0.1 -p 623 -U admin -P password mc info"
-echo ""
+# Function to detect OS
+detect_os() {
+    if [[ -f /etc/os-release ]]; then
+        . /etc/os-release
+        OS=$ID
+        VERSION=$VERSION_ID
+    else
+        print_error "Cannot detect OS"
+        exit 1
+    fi
+    
+    print_info "Detected OS: $OS $VERSION"
+}
 
-# 10. Show OpenShift BMH example
-echo -e "${BLUE}🎯 OpenShift BareMetalHost Configuration:${NC}"
-cat << 'EOF'
-apiVersion: metal3.io/v1alpha1
-kind: BareMetalHost
-metadata:
-  name: skinner-master-0
-spec:
-  bmc:
-    address: ipmi://127.0.0.1:623
-    credentialsName: skinner-master-0-bmc-secret
-  bootMACAddress: "00:50:56:xx:xx:xx"
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: skinner-master-0-bmc-secret
-type: Opaque
-data:
-  username: YWRtaW4=  # admin
-  password: cGFzc3dvcmQ=  # password
+# Function to install system dependencies
+install_system_dependencies() {
+    print_info "Installing system dependencies..."
+    
+    # Check if openssl is installed
+    if ! command_exists openssl; then
+        print_info "Installing OpenSSL for SSL certificate generation..."
+        
+        if command_exists apt-get; then
+            # Ubuntu/Debian
+            run_sudo apt-get update
+            run_sudo apt-get install -y openssl
+        elif command_exists yum; then
+            # RHEL/CentOS 7
+            run_sudo yum install -y openssl
+        elif command_exists dnf; then
+            # RHEL/CentOS 8+/Fedora
+            run_sudo dnf install -y openssl
+        else
+            print_warning "Could not determine package manager. Please install openssl manually."
+        fi
+        
+        if command_exists openssl; then
+            print_success "OpenSSL installed successfully"
+        else
+            print_warning "OpenSSL installation may have failed. HTTPS support will be limited."
+        fi
+    else
+        print_success "OpenSSL already installed"
+    fi
+}
+
+# Function to install Python dependencies
+install_dependencies() {
+    print_info "Installing Python dependencies..."
+    
+    # Check if pip3 exists
+    if ! command_exists pip3; then
+        print_error "pip3 not found. Please install Python 3 and pip first."
+        exit 1
+    fi
+    
+    # Install requirements
+    if [[ -f "$PROJECT_ROOT/requirements.txt" ]]; then
+        pip3 install -r "$PROJECT_ROOT/requirements.txt"
+        print_success "Python dependencies installed"
+    else
+        print_warning "requirements.txt not found, skipping dependency installation"
+    fi
+}
+
+# Function to configure systemd service
+configure_systemd() {
+    print_info "Configuring SystemD service..."
+    
+    local service_file="$PROJECT_ROOT/config/redfish-vmware-server.service"
+    local systemd_file="/etc/systemd/system/redfish-vmware-server.service"
+    
+    if [[ ! -f "$service_file" ]]; then
+        print_error "Service file not found: $service_file"
+        return 1
+    fi
+    
+    # Copy service file
+    run_sudo cp "$service_file" "$systemd_file"
+    print_success "Service file copied to $systemd_file"
+    
+    # Reload systemd
+    run_sudo systemctl daemon-reload
+    print_success "SystemD daemon reloaded"
+    
+    # Enable service
+    run_sudo systemctl enable redfish-vmware-server
+    print_success "Redfish VMware Server service enabled"
+    
+    return 0
+}
+
+# Function to validate configuration
+validate_config() {
+    print_info "Validating configuration..."
+    
+    local config_file="$PROJECT_ROOT/config/config.json"
+    
+    if [[ ! -f "$config_file" ]]; then
+        print_error "Configuration file not found: $config_file"
+        print_info "Please create the configuration file based on config.json.example"
+        return 1
+    fi
+    
+    # Basic JSON syntax check
+    if ! python3 -m json.tool "$config_file" > /dev/null 2>&1; then
+        print_error "Invalid JSON in configuration file: $config_file"
+        return 1
+    fi
+    
+    print_success "Configuration file is valid JSON"
+    
+    # Check for required fields
+    local required_fields=("vmware" "vms")
+    for field in "${required_fields[@]}"; do
+        if ! python3 -c "import json; config=json.load(open('$config_file')); exit(0 if '$field' in config else 1)" 2>/dev/null; then
+            print_error "Missing required field '$field' in configuration"
+            return 1
+        fi
+    done
+    
+    print_success "Configuration validation passed"
+    return 0
+}
+
+# Function to test VMware connectivity
+test_vmware_connection() {
+    print_info "Testing VMware connectivity..."
+    
+    # Create a simple test script
+    cat > /tmp/test_vmware_redfish.py << 'EOF'
+#!/usr/bin/env python3
+import sys
+import json
+import os
+
+# Add src directory to path
+sys.path.insert(0, os.path.join(os.getcwd(), 'src'))
+
+try:
+    from vmware_client import VMwareClient
+    
+    # Load config
+    config_file = sys.argv[1]
+    with open(config_file, 'r') as f:
+        config = json.load(f)
+    
+    # Test connection with first VM config
+    vm_config = config['vms'][0]
+    client = VMwareClient(
+        vm_config['vcenter_host'],
+        vm_config['vcenter_user'],
+        vm_config['vcenter_password'],
+        disable_ssl=vm_config.get('disable_ssl', True)
+    )
+    
+    # List VMs to test connection
+    vms = client.list_vms()
+    print(f"✅ Successfully connected to VMware. Found {len(vms)} VMs.")
+    
+    # Test specific VM
+    vm_name = vm_config['name']
+    vm_info = client.get_vm_info(vm_name)
+    if vm_info:
+        print(f"✅ VM '{vm_name}' found. Power state: {vm_info['power_state']}")
+    else:
+        print(f"⚠️ VM '{vm_name}' not found in vCenter")
+    
+    client.disconnect()
+    
+except Exception as e:
+    print(f"❌ VMware connection test failed: {e}")
+    sys.exit(1)
 EOF
+    
+    if python3 /tmp/test_vmware_redfish.py "$PROJECT_ROOT/config/config.json"; then
+        print_success "VMware connectivity test passed"
+    else
+        print_error "VMware connectivity test failed"
+        print_info "Please check your VMware credentials and network connectivity"
+        return 1
+    fi
+    
+    # Cleanup
+    rm -f /tmp/test_vmware_redfish.py
+    return 0
+}
 
-echo ""
-echo -e "${GREEN}🎉 IPMI VMware Bridge setup completed successfully!${NC}"
-echo -e "${BLUE}📡 Ready to receive IPMI calls from OpenShift Virtualization${NC}"
-print_info "Debug mode is ENABLED by default for OpenShift troubleshooting"
-print_info "Set IPMI_DEBUG=false to disable verbose logging"
+# Function to setup firewall rules
+setup_firewall() {
+    print_info "Setting up firewall rules..."
+    
+    # Extract ports from config
+    local config_file="$PROJECT_ROOT/config/config.json"
+    local ports=$(python3 -c "
+import json
+config = json.load(open('$config_file'))
+ports = [str(vm.get('redfish_port', 8443)) for vm in config['vms']]
+print(' '.join(ports))
+" 2>/dev/null)
+    
+    if [[ -z "$ports" ]]; then
+        print_warning "Could not extract ports from config, using default range 8443-8450"
+        ports="8443 8444 8445 8446 8447 8448 8449 8450"
+    fi
+    
+    # Check if firewalld is active
+    if command_exists firewall-cmd && systemctl is-active firewalld >/dev/null 2>&1; then
+        print_info "Configuring firewalld rules..."
+        for port in $ports; do
+            if run_sudo firewall-cmd --permanent --add-port="${port}/tcp" 2>/dev/null; then
+                print_success "Added firewall rule for port $port/tcp"
+            else
+                print_warning "Failed to add firewall rule for port $port/tcp"
+            fi
+        done
+        run_sudo firewall-cmd --reload 2>/dev/null || true
+        
+    # Check if ufw is active
+    elif command_exists ufw && ufw status | grep -q "Status: active"; then
+        print_info "Configuring ufw rules..."
+        for port in $ports; do
+            if run_sudo ufw allow "${port}/tcp" 2>/dev/null; then
+                print_success "Added ufw rule for port $port/tcp"
+            else
+                print_warning "Failed to add ufw rule for port $port/tcp"
+            fi
+        done
+        
+    # Check if iptables exists
+    elif command_exists iptables; then
+        print_info "Configuring iptables rules..."
+        for port in $ports; do
+            if run_sudo iptables -I INPUT -p tcp --dport "$port" -j ACCEPT 2>/dev/null; then
+                print_success "Added iptables rule for port $port/tcp"
+            else
+                print_warning "Failed to add iptables rule for port $port/tcp"
+            fi
+        done
+        
+        # Try to save iptables rules
+        if command_exists iptables-save; then
+            run_sudo iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+        fi
+        
+    else
+        print_warning "No supported firewall found. Please manually open ports: $ports"
+    fi
+}
 
-# Command line options
+# Function to start and test service
+start_and_test_service() {
+    print_info "Starting Redfish VMware Server service..."
+    
+    # Start the service
+    if run_sudo systemctl start redfish-vmware-server; then
+        print_success "Service started successfully"
+    else
+        print_error "Failed to start service"
+        print_info "Check logs with: sudo journalctl -u redfish-vmware-server -f"
+        return 1
+    fi
+    
+    # Wait a moment for service to initialize
+    sleep 3
+    
+    # Check service status
+    if run_sudo systemctl is-active redfish-vmware-server >/dev/null 2>&1; then
+        print_success "Service is running"
+    else
+        print_error "Service is not running"
+        print_info "Check logs with: sudo journalctl -u redfish-vmware-server -f"
+        return 1
+    fi
+    
+    # Test basic connectivity
+    print_info "Testing Redfish endpoints..."
+    
+    local config_file="$PROJECT_ROOT/config/config.json"
+    local first_port=$(python3 -c "
+import json
+config = json.load(open('$config_file'))
+if config['vms']:
+    print(config['vms'][0].get('redfish_port', 8443))
+else:
+    print(8443)
+" 2>/dev/null)
+    
+    # Test service root endpoint
+    if command_exists curl; then
+        local test_url="http://localhost:${first_port}/redfish/v1/"
+        if curl -s -o /dev/null -w "%{http_code}" "$test_url" | grep -q "200"; then
+            print_success "Redfish service root endpoint responding"
+        else
+            print_warning "Redfish service root endpoint not responding on port $first_port"
+        fi
+    else
+        print_warning "curl not available for endpoint testing"
+    fi
+    
+    return 0
+}
+
+# Function to show usage examples
+show_usage_examples() {
+    echo ""
+    echo -e "${BLUE}📖 Usage Examples${NC}"
+    echo -e "${BLUE}=================${NC}"
+    echo ""
+    
+    local config_file="$PROJECT_ROOT/config/config.json"
+    local vm_info=$(python3 -c "
+import json
+config = json.load(open('$config_file'))
+if config['vms']:
+    vm = config['vms'][0]
+    print(f\"{vm['name']}:{vm.get('redfish_port', 8443)}\")
+else:
+    print('vm-name:8443')
+" 2>/dev/null)
+    
+    local vm_name=$(echo "$vm_info" | cut -d: -f1)
+    local port=$(echo "$vm_info" | cut -d: -f2)
+    
+    echo -e "${YELLOW}🔧 Basic Redfish Operations:${NC}"
+    echo ""
+    echo "# Get service root"
+    echo "curl http://localhost:${port}/redfish/v1/"
+    echo ""
+    echo "# Get systems collection"
+    echo "curl http://localhost:${port}/redfish/v1/Systems"
+    echo ""
+    echo "# Get specific system info (requires authentication)"
+    echo "curl -u admin:password http://localhost:${port}/redfish/v1/Systems/${vm_name}"
+    echo ""
+    echo "# Power on system"
+    echo "curl -u admin:password -X POST -H \"Content-Type: application/json\" \\"
+    echo "     -d '{\"ResetType\": \"On\"}' \\"
+    echo "     http://localhost:${port}/redfish/v1/Systems/${vm_name}/Actions/ComputerSystem.Reset"
+    echo ""
+    echo "# Power off system"
+    echo "curl -u admin:password -X POST -H \"Content-Type: application/json\" \\"
+    echo "     -d '{\"ResetType\": \"ForceOff\"}' \\"
+    echo "     http://localhost:${port}/redfish/v1/Systems/${vm_name}/Actions/ComputerSystem.Reset"
+    echo ""
+    echo "# Graceful shutdown"
+    echo "curl -u admin:password -X POST -H \"Content-Type: application/json\" \\"
+    echo "     -d '{\"ResetType\": \"GracefulShutdown\"}' \\"
+    echo "     http://localhost:${port}/redfish/v1/Systems/${vm_name}/Actions/ComputerSystem.Reset"
+    echo ""
+    echo -e "${YELLOW}� Metal3/Ironic Integration Endpoints:${NC}"
+    echo ""
+    echo "# UpdateService (for firmware updates)"
+    echo "curl http://localhost:${port}/redfish/v1/UpdateService"
+    echo ""
+    echo "# Software Inventory"
+    echo "curl http://localhost:${port}/redfish/v1/UpdateService/SoftwareInventory"
+    echo ""
+    echo "# TaskService (for async operations)"
+    echo "curl http://localhost:${port}/redfish/v1/TaskService"
+    echo ""
+    echo "# BIOS settings"
+    echo "curl -u admin:password http://localhost:${port}/redfish/v1/Systems/${vm_name}/Bios"
+    echo ""
+    echo "# SecureBoot configuration"
+    echo "curl -u admin:password http://localhost:${port}/redfish/v1/Systems/${vm_name}/SecureBoot"
+    echo ""
+    echo "# Storage Controllers (RAID support)"
+    echo "curl -u admin:password http://localhost:${port}/redfish/v1/Systems/${vm_name}/Storage/1/StorageControllers/1"
+    echo ""
+    echo -e "${YELLOW}�🔒 Authentication:${NC}"
+    echo "   Username: admin"
+    echo "   Password: password"
+    echo ""
+    echo "     http://localhost:${port}/redfish/v1/Systems/${vm_name}/Actions/ComputerSystem.Reset"
+    echo ""
+    
+    echo -e "${YELLOW}🔧 Service Management:${NC}"
+    echo ""
+    echo "# Check service status"
+    echo "sudo systemctl status redfish-vmware-server"
+    echo ""
+    echo "# View service logs"
+    echo "sudo journalctl -u redfish-vmware-server -f"
+    echo ""
+    echo "# Restart service"
+    echo "sudo systemctl restart redfish-vmware-server"
+    echo ""
+    echo "# Stop service"
+    echo "sudo systemctl stop redfish-vmware-server"
+    echo ""
+    
+    echo -e "${YELLOW}🔧 Debug Mode:${NC}"
+    echo ""
+    echo "# Enable debug logging"
+    echo "export REDFISH_DEBUG=true"
+    echo "sudo systemctl restart redfish-vmware-server"
+    echo ""
+}
+
+# Main setup function
+main() {
+    echo -e "${BLUE}🔍 Starting Redfish VMware Server setup...${NC}"
+    echo ""
+    
+    # Detect OS
+    detect_os
+    
+    # Validate configuration
+    if ! validate_config; then
+        print_error "Configuration validation failed"
+        exit 1
+    fi
+    
+    # Install system dependencies
+    install_system_dependencies
+    
+    # Install dependencies
+    install_dependencies
+    
+    # Test VMware connectivity
+    if ! test_vmware_connection; then
+        print_error "VMware connectivity test failed"
+        exit 1
+    fi
+    
+    # Configure SystemD service
+    if ! configure_systemd; then
+        print_error "SystemD configuration failed"
+        exit 1
+    fi
+    
+    # Setup firewall
+    setup_firewall
+    
+    # Start and test service
+    if ! start_and_test_service; then
+        print_error "Service startup failed"
+        exit 1
+    fi
+    
+    # Show success message
+    echo ""
+    echo -e "${GREEN}🎉 Setup completed successfully!${NC}"
+    echo ""
+    print_success "Redfish VMware Server is now running"
+    print_info "Service name: redfish-vmware-server"
+    
+    # Show usage examples
+    show_usage_examples
+    
+    echo ""
+    echo -e "${GREEN}✅ All done! Your Redfish VMware Server is ready to use.${NC}"
+}
+
+# Handle command line arguments
 case "${1:-}" in
-    "test")
-        test_config
+    --help|-h)
+        echo "Redfish VMware Server Setup Script"
+        echo ""
+        echo "Usage: $0 [options]"
+        echo ""
+        echo "Options:"
+        echo "  --help, -h          Show this help message"
+        echo "  --config-only       Only configure SystemD, don't start service"
+        echo "  --test-only         Only test VMware connectivity"
+        echo ""
+        echo "Environment variables:"
+        echo "  REDFISH_DEBUG=true  Enable debug logging"
+        echo ""
+        exit 0
         ;;
-    "install-service")
-        check_root || { print_error "Must be root to install service"; exit 1; }
-        install_service 0
+    --config-only)
+        print_info "Configuration-only mode"
+        validate_config
+        configure_systemd
+        print_success "Configuration completed"
         ;;
-    "deps")
-        install_dependencies
+    --test-only)
+        print_info "Test-only mode"
+        validate_config
+        test_vmware_connection
+        print_success "Tests completed"
+        ;;
+    "")
+        main
+        ;;
+    *)
+        print_error "Unknown option: $1"
+        print_info "Use --help for usage information"
+        exit 1
         ;;
 esac

@@ -1,10 +1,10 @@
-# IPMI VMware Bridge Requirements
+# Redfish VMware Server Requirements
 
 # VMware vSphere API
 pyvmomi>=8.0.0.1.2
 
-# IPMI Protocol Support
-pyghmi>=1.5.62
+# HTTP Server and REST API support
+# (Using built-in http.server for simplicity)
 
 # Additional dependencies
 setuptools>=65.0.0
@@ -22,3 +22,10 @@ psutil>=5.9.0
 
 # Configuration handling
 pyyaml>=6.0
+
+# JSON processing (built-in json module used)
+
+# For future enhancements (optional):
+# flask>=2.2.0          # If we want to use Flask instead of http.server
+# gunicorn>=20.1.0       # For production WSGI server
+# certifi>=2022.0.0      # For SSL certificate handling

@@ -3,7 +3,7 @@
 VMware vSphere Client
 
 This module provides a client interface to VMware vSphere for VM operations.
-Used by the IPMI bridge to perform actual VM management operations.
+Used by the Redfish server to perform actual VM management operations.
 """
 
 import ssl
@@ -148,190 +148,321 @@ class VMwareClient:
             return []
     
     def power_on_vm(self, vm_name):
-        """Power on a virtual machine"""
+        """
+        Power on a virtual machine
+        
+        Args:
+            vm_name: Name of the virtual machine
+            
+        Returns:
+            True if successful, False otherwise
+        """
         try:
             vm = self.get_vm(vm_name)
             if not vm:
+                logger.error(f"VM {vm_name} not found")
                 return False
             
-            if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff:
-                task = vm.PowerOnVM_Task()
-                return self.wait_for_task(task)
-            else:
+            if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
                 logger.info(f"VM {vm_name} is already powered on")
                 return True
-                
+            
+            task = vm.PowerOnVM_Task()
+            self._wait_for_task(task)
+            
+            logger.info(f"VM {vm_name} powered on successfully")
+            return True
+            
         except Exception as e:
             logger.error(f"Error powering on VM {vm_name}: {e}")
             return False
     
-    def power_off_vm(self, vm_name, force=False):
-        """Power off a virtual machine"""
+    def power_off_vm(self, vm_name):
+        """
+        Power off a virtual machine
+        
+        Args:
+            vm_name: Name of the virtual machine
+            
+        Returns:
+            True if successful, False otherwise
+        """
         try:
             vm = self.get_vm(vm_name)
             if not vm:
+                logger.error(f"VM {vm_name} not found")
                 return False
             
-            if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
-                if force:
-                    task = vm.PowerOffVM_Task()
-                else:
-                    try:
-                        vm.ShutdownGuest()
-                        logger.info(f"Graceful shutdown initiated for VM {vm_name}")
-                        return True
-                    except:
-                        # Fall back to force power off
-                        task = vm.PowerOffVM_Task()
-                
-                return self.wait_for_task(task)
-            else:
+            if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff:
                 logger.info(f"VM {vm_name} is already powered off")
                 return True
-                
+            
+            task = vm.PowerOffVM_Task()
+            self._wait_for_task(task)
+            
+            logger.info(f"VM {vm_name} powered off successfully")
+            return True
+            
         except Exception as e:
             logger.error(f"Error powering off VM {vm_name}: {e}")
             return False
     
     def reset_vm(self, vm_name):
-        """Reset a virtual machine"""
+        """
+        Reset a virtual machine
+        
+        Args:
+            vm_name: Name of the virtual machine
+            
+        Returns:
+            True if successful, False otherwise
+        """
         try:
             vm = self.get_vm(vm_name)
             if not vm:
+                logger.error(f"VM {vm_name} not found")
                 return False
             
-            if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
-                task = vm.ResetVM_Task()
-                return self.wait_for_task(task)
-            else:
+            if vm.runtime.powerState != vim.VirtualMachinePowerState.poweredOn:
                 logger.warning(f"VM {vm_name} is not powered on, cannot reset")
                 return False
-                
+            
+            task = vm.ResetVM_Task()
+            self._wait_for_task(task)
+            
+            logger.info(f"VM {vm_name} reset successfully")
+            return True
+            
         except Exception as e:
             logger.error(f"Error resetting VM {vm_name}: {e}")
             return False
     
-    def suspend_vm(self, vm_name):
-        """Suspend a virtual machine"""
+    def shutdown_vm(self, vm_name):
+        """
+        Gracefully shutdown a virtual machine (requires VMware Tools)
+        
+        Args:
+            vm_name: Name of the virtual machine
+            
+        Returns:
+            True if successful, False otherwise
+        """
         try:
             vm = self.get_vm(vm_name)
             if not vm:
+                logger.error(f"VM {vm_name} not found")
                 return False
             
-            if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
-                task = vm.SuspendVM_Task()
-                return self.wait_for_task(task)
-            else:
-                logger.warning(f"VM {vm_name} is not powered on, cannot suspend")
-                return False
-                
+            if vm.runtime.powerState != vim.VirtualMachinePowerState.poweredOn:
+                logger.info(f"VM {vm_name} is already powered off")
+                return True
+            
+            # Check if VMware Tools is running
+            if vm.summary.guest.toolsStatus != 'toolsOk':
+                logger.warning(f"VMware Tools not running on {vm_name}, falling back to power off")
+                return self.power_off_vm(vm_name)
+            
+            vm.ShutdownGuest()
+            logger.info(f"VM {vm_name} shutdown initiated (graceful)")
+            
+            # Wait a bit for shutdown to complete
+            import time
+            for _ in range(30):  # Wait up to 30 seconds
+                vm_updated = self.get_vm(vm_name)
+                if vm_updated and vm_updated.runtime.powerState == vim.VirtualMachinePowerState.poweredOff:
+                    logger.info(f"VM {vm_name} shutdown completed")
+                    return True
+                time.sleep(1)
+            
+            logger.warning(f"VM {vm_name} graceful shutdown timed out, forcing power off")
+            return self.power_off_vm(vm_name)
+            
         except Exception as e:
-            logger.error(f"Error suspending VM {vm_name}: {e}")
+            logger.error(f"Error shutting down VM {vm_name}: {e}")
             return False
+    
+    def restart_vm(self, vm_name):
+        """
+        Gracefully restart a virtual machine (requires VMware Tools)
+        
+        Args:
+            vm_name: Name of the virtual machine
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            vm = self.get_vm(vm_name)
+            if not vm:
+                logger.error(f"VM {vm_name} not found")
+                return False
+            
+            if vm.runtime.powerState != vim.VirtualMachinePowerState.poweredOn:
+                logger.info(f"VM {vm_name} is powered off, powering on instead")
+                return self.power_on_vm(vm_name)
+            
+            # Check if VMware Tools is running
+            if vm.summary.guest.toolsStatus != 'toolsOk':
+                logger.warning(f"VMware Tools not running on {vm_name}, falling back to reset")
+                return self.reset_vm(vm_name)
+            
+            vm.RebootGuest()
+            logger.info(f"VM {vm_name} restart initiated (graceful)")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error restarting VM {vm_name}: {e}")
+            return False
+    
+    def get_vm_power_state(self, vm_name):
+        """
+        Get the power state of a virtual machine
+        
+        Args:
+            vm_name: Name of the virtual machine
+            
+        Returns:
+            Power state string or None if error
+        """
+        try:
+            vm = self.get_vm(vm_name)
+            if not vm:
+                return None
+            
+            return vm.runtime.powerState
+            
+        except Exception as e:
+            logger.error(f"Error getting power state for VM {vm_name}: {e}")
+            return None
     
     def get_vm_info(self, vm_name):
         """
-        Get detailed VM information
+        Get detailed information about a virtual machine
         
+        Args:
+            vm_name: Name of the virtual machine
+            
         Returns:
-            Dictionary with VM information
+            Dictionary with VM information or None if error
         """
         try:
             vm = self.get_vm(vm_name)
             if not vm:
-                return {}
+                return None
             
             info = {
                 'name': vm.name,
                 'power_state': str(vm.runtime.powerState),
                 'guest_os': vm.config.guestFullName if vm.config else 'Unknown',
-                'uuid': vm.config.instanceUuid if vm.config else 'Unknown',
-                'cpu_count': vm.config.hardware.numCPU if vm.config else 0,
                 'memory_mb': vm.config.hardware.memoryMB if vm.config else 0,
-                'tools_status': str(vm.guest.toolsStatus) if vm.guest else 'Unknown',
-                'ip_address': vm.guest.ipAddress if vm.guest and vm.guest.ipAddress else 'Unknown'
+                'num_cpu': vm.config.hardware.numCPU if vm.config else 0,
+                'guest_tools_status': str(vm.summary.guest.toolsStatus),
+                'guest_ip': vm.summary.guest.ipAddress,
+                'guest_hostname': vm.summary.guest.hostName,
+                'uuid': vm.config.uuid if vm.config else None
             }
             
             return info
             
         except Exception as e:
             logger.error(f"Error getting VM info for {vm_name}: {e}")
-            return {}
+            return None
     
-    def is_vm_powered_on(self, vm_name):
+    def set_vm_boot_order(self, vm_name, boot_order):
         """
-        Check if VM is powered on
+        Set the boot order for a virtual machine
         
         Args:
-            vm_name: Name of the VM
+            vm_name: Name of the virtual machine
+            boot_order: List of boot devices ['disk', 'cdrom', 'network']
             
         Returns:
-            bool: True if VM is powered on, False otherwise
+            True if successful, False otherwise
         """
         try:
             vm = self.get_vm(vm_name)
             if not vm:
-                logger.warning(f"VM {vm_name} not found")
+                logger.error(f"VM {vm_name} not found")
                 return False
-                
-            return vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn
+            
+            # Create boot options
+            boot_options = []
+            for device in boot_order:
+                if device.lower() == 'disk':
+                    boot_options.append(vim.vm.BootOptions.BootableDiskDevice())
+                elif device.lower() == 'cdrom':
+                    boot_options.append(vim.vm.BootOptions.BootableCdromDevice())
+                elif device.lower() == 'network':
+                    boot_options.append(vim.vm.BootOptions.BootableEthernetDevice())
+            
+            # Configure boot options
+            boot_config = vim.vm.BootOptions()
+            boot_config.bootOrder = boot_options
+            
+            # Create VM config spec
+            spec = vim.vm.ConfigSpec()
+            spec.bootOptions = boot_config
+            
+            # Apply configuration
+            task = vm.ReconfigVM_Task(spec)
+            self._wait_for_task(task)
+            
+            logger.info(f"Boot order set for VM {vm_name}: {boot_order}")
+            return True
             
         except Exception as e:
-            logger.error(f"Error checking power state for {vm_name}: {e}")
+            logger.error(f"Error setting boot order for VM {vm_name}: {e}")
             return False
     
-    def mount_iso(self, vm_name, iso_path, datastore_name=None):
+    def mount_iso(self, vm_name, iso_path):
         """
-        Mount an ISO file to VM's CD-ROM
+        Mount an ISO file to a virtual machine's CD/DVD drive
         
         Args:
-            vm_name: Name of the VM
-            iso_path: Path to ISO file
-            datastore_name: Datastore name (optional)
+            vm_name: Name of the virtual machine
+            iso_path: Path to the ISO file on the datastore
+            
+        Returns:
+            True if successful, False otherwise
         """
         try:
             vm = self.get_vm(vm_name)
             if not vm:
+                logger.error(f"VM {vm_name} not found")
                 return False
             
-            # Find CD-ROM device
-            cdrom_device = None
+            # Find CD/DVD drive
+            cd_drive = None
             for device in vm.config.hardware.device:
                 if isinstance(device, vim.vm.device.VirtualCdrom):
-                    cdrom_device = device
+                    cd_drive = device
                     break
             
-            if not cdrom_device:
-                logger.error(f"No CD-ROM device found in VM {vm_name}")
+            if not cd_drive:
+                logger.error(f"No CD/DVD drive found in VM {vm_name}")
                 return False
             
-            # Create ISO backing
+            # Configure ISO backing
             cdrom_spec = vim.vm.device.VirtualDeviceSpec()
             cdrom_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
-            cdrom_spec.device = cdrom_device
+            cdrom_spec.device = cd_drive
             
+            # Set ISO file as backing
             cdrom_spec.device.backing = vim.vm.device.VirtualCdrom.IsoBackingInfo()
-            if datastore_name:
-                cdrom_spec.device.backing.fileName = f"[{datastore_name}] {iso_path}"
-            else:
-                cdrom_spec.device.backing.fileName = iso_path
-            
+            cdrom_spec.device.backing.fileName = iso_path
             cdrom_spec.device.connectable = vim.vm.device.VirtualDevice.ConnectInfo()
-            cdrom_spec.device.connectable.startConnected = True
             cdrom_spec.device.connectable.connected = True
-            cdrom_spec.device.connectable.allowGuestControl = True
+            cdrom_spec.device.connectable.startConnected = True
             
-            # Reconfigure VM
-            config_spec = vim.vm.ConfigSpec()
-            config_spec.deviceChange = [cdrom_spec]
+            # Apply changes
+            spec = vim.vm.ConfigSpec()
+            spec.deviceChange = [cdrom_spec]
             
-            task = vm.ReconfigVM_Task(spec=config_spec)
-            result = self.wait_for_task(task)
+            task = vm.ReconfigVM_Task(spec)
+            self._wait_for_task(task)
             
-            if result:
-                logger.info(f"Successfully mounted ISO {iso_path} to VM {vm_name}")
-            
-            return result
+            logger.info(f"ISO {iso_path} mounted to VM {vm_name}")
+            return True
             
         except Exception as e:
             logger.error(f"Error mounting ISO to VM {vm_name}: {e}")
@@ -339,238 +470,70 @@ class VMwareClient:
     
     def unmount_iso(self, vm_name):
         """
-        Unmount ISO from VM's CD-ROM
+        Unmount ISO from a virtual machine's CD/DVD drive
         
         Args:
-            vm_name: Name of the VM
+            vm_name: Name of the virtual machine
             
         Returns:
-            bool: True if successful, False otherwise
+            True if successful, False otherwise
         """
         try:
             vm = self.get_vm(vm_name)
             if not vm:
+                logger.error(f"VM {vm_name} not found")
                 return False
             
-            # Find CD-ROM device
-            cdrom_device = None
+            # Find CD/DVD drive
+            cd_drive = None
             for device in vm.config.hardware.device:
                 if isinstance(device, vim.vm.device.VirtualCdrom):
-                    cdrom_device = device
+                    cd_drive = device
                     break
             
-            if not cdrom_device:
-                logger.warning(f"No CD-ROM device found in VM {vm_name}")
+            if not cd_drive:
+                logger.error(f"No CD/DVD drive found in VM {vm_name}")
                 return False
             
-            # Create device spec to remove ISO
+            # Configure device spec to disconnect
             cdrom_spec = vim.vm.device.VirtualDeviceSpec()
             cdrom_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
-            cdrom_spec.device = cdrom_device
+            cdrom_spec.device = cd_drive
             
-            # Set to client device (no ISO)
-            cdrom_spec.device.backing = vim.vm.device.VirtualCdrom.RemotePassthroughBackingInfo()
+            # Disconnect the device
+            cdrom_spec.device.connectable = vim.vm.device.VirtualDevice.ConnectInfo()
             cdrom_spec.device.connectable.connected = False
             cdrom_spec.device.connectable.startConnected = False
             
-            # Reconfigure VM
-            config_spec = vim.vm.ConfigSpec()
-            config_spec.deviceChange = [cdrom_spec]
+            # Apply changes
+            spec = vim.vm.ConfigSpec()
+            spec.deviceChange = [cdrom_spec]
             
-            task = vm.ReconfigVM_Task(spec=config_spec)
-            result = self.wait_for_task(task)
+            task = vm.ReconfigVM_Task(spec)
+            self._wait_for_task(task)
             
-            if result:
-                logger.info(f"Successfully unmounted ISO from VM {vm_name}")
-            
-            return result
+            logger.info(f"ISO unmounted from VM {vm_name}")
+            return True
             
         except Exception as e:
             logger.error(f"Error unmounting ISO from VM {vm_name}: {e}")
             return False
     
-    def set_boot_order(self, vm_name, boot_order=['network', 'cdrom', 'disk']):
-        """
-        Set boot order for VM
-        
-        Args:
-            vm_name: Name of the VM
-            boot_order: List of boot devices in order
-        """
-        try:
-            vm = self.get_vm(vm_name)
-            if not vm:
-                return False
-            
-            boot_options = vim.vm.BootOptions()
-            boot_devices = []
-            
-            for device in boot_order:
-                if device == 'network':
-                    boot_devices.append(vim.vm.BootOptions.BootableEthernetDevice())
-                elif device == 'cdrom':
-                    boot_devices.append(vim.vm.BootOptions.BootableCdromDevice())
-                elif device == 'disk':
-                    boot_devices.append(vim.vm.BootOptions.BootableDiskDevice())
-                elif device == 'floppy':
-                    boot_devices.append(vim.vm.BootOptions.BootableFloppyDevice())
-            
-            boot_options.bootOrder = boot_devices
-            
-            config_spec = vim.vm.ConfigSpec()
-            config_spec.bootOptions = boot_options
-            
-            task = vm.ReconfigVM_Task(spec=config_spec)
-            result = self.wait_for_task(task)
-            
-            if result:
-                logger.info(f"Successfully set boot order for VM {vm_name}: {boot_order}")
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error setting boot order for VM {vm_name}: {e}")
-            return False
-    
-    def set_boot_device(self, vm_name, boot_device):
-        """
-        Set primary boot device for VM (simplified implementation)
-        
-        Args:
-            vm_name: Name of the VM
-            boot_device: Boot device ('network', 'cdrom', 'disk', 'floppy')
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            vm = self.get_vm(vm_name)
-            if not vm:
-                return False
-            
-            logger.info(f"Setting boot device to {boot_device} for VM {vm_name}")
-            
-            # For now, we'll just log the boot device change
-            # The actual implementation would require more complex VMware configuration
-            # that may vary depending on VM settings and VMware version
-            
-            logger.info(f"Boot device set to {boot_device} for VM {vm_name} (simulated)")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error setting boot device for VM {vm_name}: {e}")
-            return False
-    
-    def wait_for_task(self, task, timeout=300):
+    def _wait_for_task(self, task):
         """
         Wait for a VMware task to complete
         
         Args:
             task: VMware task object
-            timeout: Timeout in seconds
             
         Returns:
-            True if task completed successfully, False otherwise
+            Task result
         """
-        try:
+        while task.info.state in [vim.TaskInfo.State.running, vim.TaskInfo.State.queued]:
             import time
-            start_time = time.time()
-            
-            while task.info.state in [vim.TaskInfo.State.running, vim.TaskInfo.State.queued]:
-                if time.time() - start_time > timeout:
-                    logger.error("Task timed out")
-                    return False
-                time.sleep(1)
-            
-            if task.info.state == vim.TaskInfo.State.success:
-                return True
-            else:
-                logger.error(f"Task failed: {task.info.error}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error waiting for task: {e}")
-            return False
-
-    def set_vm_firmware(self, vm_name, firmware_type='bios'):
-        """
-        Set VM firmware type (BIOS or EFI)
+            time.sleep(0.1)
         
-        Args:
-            vm_name: Name of the VM
-            firmware_type: 'bios' for legacy BIOS, 'efi' for UEFI
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            vm = self.get_vm(vm_name)
-            if not vm:
-                return False
-            
-            # VM must be powered off to change firmware type
-            if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
-                logger.info(f"Powering off VM {vm_name} to change firmware type")
-                self.power_off_vm(vm_name)
-                
-                # Wait a bit for the VM to power off
-                import time
-                time.sleep(5)
-            
-            # Create a config spec to change firmware
-            config_spec = vim.vm.ConfigSpec()
-            
-            if firmware_type.lower() == 'bios':
-                config_spec.firmware = vim.vm.GuestOsDescriptor.FirmwareType.bios
-                # Disable EFI secure boot when switching to BIOS
-                config_spec.bootOptions = vim.vm.BootOptions()
-                config_spec.bootOptions.efiSecureBootEnabled = False
-                logger.info(f"Setting VM {vm_name} firmware to Legacy BIOS and disabling secure boot")
-            elif firmware_type.lower() == 'efi':
-                config_spec.firmware = vim.vm.GuestOsDescriptor.FirmwareType.efi
-                logger.info(f"Setting VM {vm_name} firmware to UEFI")
-            else:
-                logger.error(f"Invalid firmware type: {firmware_type}. Use 'bios' or 'efi'")
-                return False
-            
-            # Apply the configuration
-            task = vm.ReconfigVM_Task(config_spec)
-            result = self.wait_for_task(task)
-            
-            if result:
-                logger.info(f"Successfully changed VM {vm_name} firmware to {firmware_type}")
-            else:
-                logger.error(f"Failed to change VM {vm_name} firmware")
-                
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error setting VM {vm_name} firmware: {e}")
-            return False
-
-
-def test_connection():
-    """Test VMware connection"""
-    try:
-        # Test configuration
-        client = VMwareClient(
-            host='chiaretto-vcsa01.chiaret.to',
-            user='administrator@chiaretto.local',
-            password='VMware1!VMware1!'
-        )
-        
-        vms = client.list_vms()
-        print(f"Found {len(vms)} VMs:")
-        for vm in vms[:5]:  # Show first 5 VMs
-            print(f"  - {vm.name} ({vm.runtime.powerState})")
-        
-        client.disconnect()
-        return True
-        
-    except Exception as e:
-        print(f"Connection test failed: {e}")
-        return False
-
-
-if __name__ == '__main__':
-    test_connection()
+        if task.info.state == vim.TaskInfo.State.success:
+            return task.info.result
+        else:
+            raise Exception(f"Task failed: {task.info.error}")

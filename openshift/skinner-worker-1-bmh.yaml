@@ -1,0 +1,29 @@
+apiVersion: metal3.io/v1alpha1
+kind: BareMetalHost
+metadata:
+  name: skinner-worker-1
+  namespace: openshift-machine-api
+  labels:
+    infraenvs.agent-install.openshift.io: "skinner"
+spec:
+  online: true
+  bootMACAddress: "00:50:56:84:8c:22"
+  bmc:
+    address: redfish+https://bastion.chiaret.to:8443/redfish/v1/Systems/skinner-worker-1
+    credentialsName: skinner-worker-1-bmc-secret
+    disableCertificateVerification: true
+  description: "VMware VM - Worker Node 1"
+  hardwareProfile: "unknown"
+  userData:
+    name: worker-user-data
+    namespace: openshift-machine-api
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: skinner-worker-1-bmc-secret
+  namespace: openshift-machine-api
+type: Opaque
+data:
+  username: "YWRtaW4="  # admin
+  password: "cGFzc3dvcmQ="  # password
