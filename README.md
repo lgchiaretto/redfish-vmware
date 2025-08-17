@@ -4,13 +4,13 @@
 
 This project provides a **Redfish** server that acts as a bridge between Redfish (REST API) calls and VMware vSphere operations, allowing you to control VMware VMs through the industry-standard Redfish protocol.
 
-🎯 **VMware Redfish Bridge v1.0** - 100% Functional ✅ **[Modularized]**
+🎯 **VMware Redfish Bridge**
 
-**✅ Compatible with OpenShift Metal3 - Complete asynchronous task system**
-**� Metal3 Enhanced Support - Optimized for Ironic integration**
-**📋 Dynamic Task Management - Dynamic task system with real-time progress**
-**🚨 CRITICAL ENDPOINT MONITORING - Alerts for critical Metal3 endpoints**
-**🏗️ MODULAR ARCHITECTURE - Code organized in specialized modules**
+- **✅ Compatible with OpenShift Metal3 - Complete asynchronous task system**
+- **� Metal3 Enhanced Support - Optimized for Ironic integration**
+- **📋 Dynamic Task Management - Dynamic task system with real-time progress**
+- **🚨 CRITICAL ENDPOINT MONITORING - Alerts for critical Metal3 endpoints**
+- **🏗️ MODULAR ARCHITECTURE - Code organized in specialized modules**
 
 ## 🏗️ Modular Architecture
 
@@ -42,15 +42,6 @@ src/
     └── media_operations.py     # Media operations (ISO/CD-ROM)
 ```
 
-### 🔧 Modularization Benefits
-
-- **Separation of Concerns** - Each module has a specific function
-- **Maintainability** - Easy bug location and fixing
-- **Scalability** - Easy addition of new features
-- **Testability** - Each module can be tested independently
-- **Reusability** - Components can be reused in other projects
-- **Readability** - Cleaner and more organized code
-
 ## 🌟 Main Features
 
 - **Complete Redfish server** - Implements standard Redfish endpoints with HTTPS
@@ -66,7 +57,7 @@ src/
 
 ## 📋 Prerequisites
 
-- **Python 3.8+**
+- **Python 3.11+**
 - **VMware vCenter/ESXi** - Access to vSphere API
 - **Linux with systemd** - For service control
 - **Root access** - For systemd and firewall configuration
@@ -78,18 +69,12 @@ src/
 git clone <repo-url>
 cd ipmi-vmware
 
-# Automatic installation and setup
+# Automatic installation
 sudo ./setup.sh
 
-# After setup, restart the service
-sudo systemctl restart redfish-vmware-server
+# Verify functionality
+./tests/test_redfish.sh
 ```
-
-**Important Notes:**
-- Always run `./setup.sh` after any configuration changes
-- The Redfish password for testing is: `password`
-- Service control is handled through systemd
-- After setup completion, restart the service to ensure proper initialization
 
 ## ⚙️ Configuration
 
@@ -106,10 +91,6 @@ Edit `config/config.json`:
     "port": 443,
     "disable_ssl": true
   },
-  "ssl": {
-    "cert_path": "/etc/letsencrypt/live/bastion.chiaret.to/fullchain.pem",
-    "key_path": "/etc/letsencrypt/live/bastion.chiaret.to/privkey.pem"
-  },
   "vms": [
     {
       "name": "worker-vm-1",
@@ -119,7 +100,7 @@ Edit `config/config.json`:
       "redfish_port": 8443,
       "redfish_user": "admin",
       "redfish_password": "password",
-      "disable_ssl": false
+      "disable_ssl": true
     }
   ]
 }
@@ -135,7 +116,6 @@ The script will:
 - ✅ Install Python dependencies
 - ✅ Test VMware connectivity
 - ✅ Configure systemd service
-- ✅ Setup SSL with Let's Encrypt certificates
 - ✅ Configure firewall
 - ✅ Start the service
 
@@ -190,21 +170,16 @@ sudo systemctl restart redfish-vmware-server
 
 # Real-time logs
 sudo journalctl -u redfish-vmware-server -f
-
-# Enable debug logging (persistent)
-sudo systemctl edit redfish-vmware-server
-# Add: Environment=REDFISH_DEBUG=true
-sudo systemctl restart redfish-vmware-server
 ```
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   OpenShift     │    │   Redfish        │    │   VMware        │
-│   Metal3        │───▶│   VMware         │───▶│   vSphere       │
-│ (BareMetalHost) │    │   Server         │    │   API           │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+    ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+    │   OpenShift     │     │   Redfish        │     │   VMware        │
+    │   Metal3        │───▶│   VMware         │───▶│   vSphere       │
+    │ (BareMetalHost) │     │   Server         │     │   API           │
+    └─────────────────┘     └──────────────────┘     └─────────────────┘
 ```
 
 ### Components
@@ -269,99 +244,45 @@ This project implements Redfish endpoints compatible with Metal3/Ironic for comp
 - ✅ **Async Operations**: Task tracking and status
 - ✅ **ISO Boot**: Mounting and boot via virtual media
 
-### BareMetalHost Configuration
-```yaml
-apiVersion: metal3.io/v1alpha1
-kind: BareMetalHost
-metadata:
-  name: worker-vm-1
-spec:
-  bmc:
-    address: redfish+https://vmware-host:8443/redfish/v1/Systems/worker-vm-1
-    credentialsName: worker-vm-1-bmc-secret
-  bootMACAddress: "00:50:56:xx:xx:xx"
-  online: true
-```
-
-## 🐛 Debug and Troubleshooting
+## � Troubleshooting
 
 ### SystemD Debug Control
 
-Debug logging can be controlled through systemd environment variables:
+Debug logging can be controlled through systemd:
 
 ```bash
-# Enable debug logging (temporary)
+# Enable debug logging
 sudo systemctl edit redfish-vmware-server
-```
-
-Add the following content:
-```ini
-[Service]
-Environment=REDFISH_DEBUG=true
-```
-
-Then restart the service:
-```bash
+# Add: Environment=REDFISH_DEBUG=true
 sudo systemctl restart redfish-vmware-server
-```
 
-### Viewing Logs
-
-```bash
-# View real-time logs
+# View logs
 sudo journalctl -u redfish-vmware-server -f
-
-# View logs with debug information (when enabled)
-sudo journalctl -u redfish-vmware-server -f --no-pager
-
-# View service status
-sudo systemctl status redfish-vmware-server
 ```
-
-### Detailed Logs
-
-When debug mode is enabled, the server records:
 
 - 🔍 **All HTTP requests** with source IP and User-Agent
-- 🤖 **Metal3/Ironic request identification**
-- 🔧 **Inspection endpoints** monitoring (UpdateService, TaskService, FirmwareInventory)
+- 🤖 **Automatic detection** of Metal3/Ironic requests
+- 🔧 **Inspection endpoints** specific (UpdateService, TaskService, FirmwareInventory)
 - 💾 **RAID operations** and storage controller queries
 - 📋 **Asynchronous task tracking**
 - 🔄 **Firmware update simulation** for compatibility
-
-### Common Issue Resolution
-
-**BMH stuck in "Inspecting":**
-- ✅ Check if UpdateService/TaskService are responding
-- ✅ Verify FirmwareInventory has components
-- ✅ Validate Storage controllers are being detected
-
-**Firmware Update Failed:**
-- ✅ Endpoints `/redfish/v1/UpdateService/Actions/*` implemented
-- ✅ Tasks are created and trackable via TaskService
-- ✅ Update simulation to avoid failures
-
-**RAID Config Failed:**
-- ✅ Storage controllers with detailed RAID capabilities
-- ✅ Support for RAID0, RAID1, RAID5, RAID10
-- ✅ Hot spare configuration and bootable volumes
 
 ## 🧪 Testing
 
 ### Test Procedure
 
 ```bash
-# Test service status
-sudo systemctl status redfish-vmware-server
+# Run all tests
+./tests/test_redfish.sh
 
-# Test basic endpoint connectivity
-curl -k https://localhost:8443/redfish/v1/
+# Test only power cycle
+./tests/test_redfish.sh power
 
-# Test authenticated endpoint
-curl -k -u admin:password https://localhost:8443/redfish/v1/Systems
+# Check service status
+./tests/test_redfish.sh status
 
-# Monitor service logs
-sudo journalctl -u redfish-vmware-server -f
+# Monitor logs
+./tests/test_redfish.sh logs
 ```
 
 ## 🗑️ Uninstallation
@@ -383,90 +304,6 @@ sudo ./uninstall.sh --force
 3. Implement and test your changes
 4. Submit a Pull Request
 
-## 📊 Project Validation Status
-
-### ✅ **Final Functionality Test (v1.0)**
-
-**Status**: 🟢 **COMPLETELY FUNCTIONAL - PRODUCTION READY**
-
-#### 🔍 Tests Performed and Validated:
-
-**1. ⚡ Power Management** 
-- ✅ On/Off operations working
-- ✅ GracefulShutdown/Restart implemented
-- ✅ PowerCycle and PushPowerButton operational
-- ✅ Power states (On/Off) reported correctly
-
-**2. 🚀 Boot Configuration**
-- ✅ Boot source override (PXE/CD/USB/HDD) functional
-- ✅ Once/Continuous/Disabled modes implemented
-- ✅ UEFI boot targets supported
-
-**3. 💿 Virtual Media**
-- ✅ Insert/Eject media working
-- ✅ CD and Floppy virtual available
-- ✅ WriteProtected mode implemented
-
-**4. 🔍 Hardware Inventory**
-- ✅ CPU, Memory, Network, Storage detected
-- ✅ Detailed information for each component
-- ✅ Health status and metrics implemented
-
-**5. 💾 RAID & Storage**
-- ✅ Storage controllers with RAID capabilities
-- ✅ Volume creation/deletion functional
-- ✅ Complete drive information
-
-**6. 🌡️ Monitoring & Sensors**
-- ✅ Power consumption tracking
-- ✅ Temperature monitoring (CPU/System)
-- ✅ Fan speed reporting
-- ✅ Voltage rail monitoring
-
-**7. 📝 Log Management**
-- ✅ EventLog and SEL implemented
-- ✅ Log clearing operations functional
-- ✅ Historical event tracking
-
-**8. 🔐 Security & Session**
-- ✅ SSL/TLS with Let's Encrypt certificates
-- ✅ Basic Authentication functional
-- ✅ Session management implemented
-- ✅ SecureBoot configuration
-
-**9. 🔄 Task & Update Services**
-- ✅ 60+ historical tasks implemented
-- ✅ Complete firmware inventory
-- ✅ Simulated update operations
-- ✅ Async task tracking
-
-### 🚀 **Production Deployment Status**
-
-**System Status**: 🟢 **READY FOR PRODUCTION**
-- ✅ SystemD service configured with debug control
-- ✅ SSL with Let's Encrypt certificates
-- ✅ Configuration file validated
-- ✅ VMware integration tested
-- ✅ OpenShift compatibility confirmed
-- ✅ Clean logging architecture implemented
-
-### 🛠️ **Maintenance Instructions**
-
-**After any changes to the project:**
-1. Run `./setup.sh` to update configuration
-2. Restart the service: `sudo systemctl restart redfish-vmware-server`
-3. Check status: `sudo systemctl status redfish-vmware-server`
-4. Monitor logs: `sudo journalctl -u redfish-vmware-server -f`
-
-**Default Credentials:**
-- Username: `admin`
-- Password: `password`
-
-**Debug Mode:**
-- Controlled via systemd environment variables
-- Enable: `sudo systemctl edit redfish-vmware-server` and add `Environment=REDFISH_DEBUG=true`
-- Restart service after changes
-
 ## 📄 License
 
 This project is under open source license.
@@ -474,4 +311,3 @@ This project is under open source license.
 ---
 
 **Redfish VMware Server** - Control your VMware VMs through standard REST APIs! 🚀
-**IMPLEMENTATION COMPLETELY VALIDATED AND FUNCTIONAL** ✅
