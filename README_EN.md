@@ -4,14 +4,13 @@
 
 This project provides a **Redfish** server that acts as a bridge between Redfish (REST API) calls and VMware vSphere operations, allowing you to control VMware VMs through the industry-standard Redfish protocol.
 
-🎯 **VMware Redfish Bridge v1.0** - 100% Functional ✅ **[Modularized]**
+🎯 **VMware Redfish Bridge**
 
-**✅ Compatible with OpenShift Metal3 - Complete asynchronous task system**
-**� Metal3 Enhanced Support - Optimized for Ironic integration**
-**🔧 Metal3 Failure Prevention - ZERO failed queries in Ironic logs**
-**📋 Dynamic Task Management - Dynamic task system with real-time progress**
-**🚨 CRITICAL ENDPOINT MONITORING - Alerts for critical Metal3 endpoints**
-**🏗️ MODULAR ARCHITECTURE - Code organized in specialized modules**
+- **✅ Compatible with OpenShift Metal3 - Complete asynchronous task system**
+- **� Metal3 Enhanced Support - Optimized for Ironic integration**
+- **📋 Dynamic Task Management - Dynamic task system with real-time progress**
+- **🚨 CRITICAL ENDPOINT MONITORING - Alerts for critical Metal3 endpoints**
+- **🏗️ MODULAR ARCHITECTURE - Code organized in specialized modules**
 
 ## 🏗️ Modular Architecture
 
@@ -58,7 +57,7 @@ src/
 
 ## 📋 Prerequisites
 
-- **Python 3.8+**
+- **Python 3.11+**
 - **VMware vCenter/ESXi** - Access to vSphere API
 - **Linux with systemd** - For service control
 - **Root access** - For systemd and firewall configuration
@@ -176,11 +175,11 @@ sudo journalctl -u redfish-vmware-server -f
 ## 🏗️ Architecture
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   OpenShift     │    │   Redfish        │    │   VMware        │
-│   Metal3        │───▶│   VMware         │───▶│   vSphere       │
-│ (BareMetalHost) │    │   Server         │    │   API           │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+    ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+    │   OpenShift     │     │   Redfish        │     │   VMware        │
+    │   Metal3        │───▶│   VMware         │───▶│   vSphere       │
+    │ (BareMetalHost) │     │   Server         │     │   API           │
+    └─────────────────┘     └──────────────────┘     └─────────────────┘
 ```
 
 ### Components
@@ -245,20 +244,6 @@ This project implements Redfish endpoints compatible with Metal3/Ironic for comp
 - ✅ **Async Operations**: Task tracking and status
 - ✅ **ISO Boot**: Mounting and boot via virtual media
 
-### BareMetalHost Configuration
-```yaml
-apiVersion: metal3.io/v1alpha1
-kind: BareMetalHost
-metadata:
-  name: worker-vm-1
-spec:
-  bmc:
-    address: redfish+https://vmware-host:8443/redfish/v1/Systems/worker-vm-1
-    credentialsName: worker-vm-1-bmc-secret
-  bootMACAddress: "00:50:56:xx:xx:xx"
-  online: true
-```
-
 ## � Troubleshooting
 
 ### SystemD Debug Control
@@ -281,23 +266,6 @@ sudo journalctl -u redfish-vmware-server -f
 - 💾 **RAID operations** and storage controller queries
 - 📋 **Asynchronous task tracking**
 - 🔄 **Firmware update simulation** for compatibility
-
-### Common Issue Resolution
-
-**BMH stuck in "Inspecting":**
-- ✅ Check if UpdateService/TaskService are responding
-- ✅ Verify FirmwareInventory has components
-- ✅ Validate Storage controllers are being detected
-
-**Firmware Update Failed:**
-- ✅ Endpoints `/redfish/v1/UpdateService/Actions/*` implemented
-- ✅ Tasks are created and trackable via TaskService
-- ✅ Update simulation to avoid failures
-
-**RAID Config Failed:**
-- ✅ Storage controllers with detailed RAID capabilities
-- ✅ Support for RAID0, RAID1, RAID5, RAID10
-- ✅ Hot spare configuration and bootable volumes
 
 ## 🧪 Testing
 
@@ -336,86 +304,10 @@ sudo ./uninstall.sh --force
 3. Implement and test your changes
 4. Submit a Pull Request
 
-## 📊 Project Validation Status
-
-### ✅ **Final Functionality Test (v1.0)**
-
-**Status**: 🟢 **COMPLETELY FUNCTIONAL - PRODUCTION READY**
-
-#### 🔍 Tests Performed and Validated:
-
-**1. ⚡ Power Management** 
-- ✅ On/Off operations working
-- ✅ GracefulShutdown/Restart implemented
-- ✅ PowerCycle and PushPowerButton operational
-- ✅ Power states (On/Off) reported correctly
-
-**2. 🚀 Boot Configuration**
-- ✅ Boot source override (PXE/CD/USB/HDD) functional
-- ✅ Once/Continuous/Disabled modes implemented
-- ✅ UEFI boot targets supported
-
-**3. 💿 Virtual Media**
-- ✅ Insert/Eject media working
-- ✅ CD and Floppy virtual available
-- ✅ WriteProtected mode implemented
-
-**4. 🔍 Hardware Inventory**
-- ✅ CPU, Memory, Network, Storage detected
-- ✅ Detailed information for each component
-- ✅ Health status and metrics implemented
-
-**5. 💾 RAID & Storage**
-- ✅ Storage controllers with RAID capabilities
-- ✅ Volume creation/deletion functional
-- ✅ Complete drive information
-
-**6. 🌡️ Monitoring & Sensors**
-- ✅ Power consumption tracking
-- ✅ Temperature monitoring (CPU/System)
-- ✅ Fan speed reporting
-- ✅ Voltage rail monitoring
-
-**7. 📝 Log Management**
-- ✅ EventLog and SEL implemented
-- ✅ Log clearing operations functional
-- ✅ Historical event tracking
-
-**8. 🔐 Security & Session**
-- ✅ SSL/TLS with self-signed certificates
-- ✅ Basic Authentication functional
-- ✅ Session management implemented
-- ✅ SecureBoot configuration
-
-**9. 🔄 Task & Update Services**
-- ✅ 60+ historical tasks implemented
-- ✅ Complete firmware inventory
-- ✅ Simulated update operations
-- ✅ Async task tracking
-
-### 🎯 **Metal³/Ironic Compatibility - 100% VALIDATED**
-
-**Zero "failed" queries confirmed**: ✅
-- All necessary endpoints implemented
-- Responses always return valid data
-- No endpoint returns 404 or error
-- Timeouts configured appropriately
-- Detailed logging for troubleshooting
-
-### 🚀 **Production Deployment Status**
-
-**System Status**: 🟢 **READY FOR PRODUCTION**
-- ✅ SystemD service configured
-- ✅ SSL certificates auto-generated
-- ✅ Configuration file validated
-- ✅ VMware integration tested
-- ✅ OpenShift compatibility confirmed
-
 ## 📄 License
 
 This project is under open source license.
 
 ---
 
-**Redfish VMware Server v1.0** - Control your VMware VMs through standard REST APIs! 🚀
-**IMPLEMENTATION COMPLETELY VALIDATED AND FUNCTIONAL** ✅
+**Redfish VMware Server** - Control your VMware VMs through standard REST APIs! 🚀
