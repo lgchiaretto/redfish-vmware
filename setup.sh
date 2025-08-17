@@ -30,18 +30,8 @@ else
     SYSTEMD_SETUP=false
 fi
 
-# Check for debug mode - Default to disabled for cleaner production logs
-DEBUG_MODE=${REDFISH_DEBUG:-false}
-if [[ "$DEBUG_MODE" == "true" ]]; then
-    echo -e "${YELLOW}🐛 DEBUG MODE ENABLED - Enhanced Metal3/Ironic debugging${NC}"
-    echo -e "${YELLOW}💡 All Redfish requests logged with detailed Metal3 failure analysis${NC}"
-    echo -e "${YELLOW}🔍 Critical endpoints monitored: UpdateService, FirmwareInventory, TaskService${NC}"
-    echo -e "${YELLOW}⚠️  Special BIOS firmware component logging enabled${NC}"
-else
-    echo -e "${BLUE}📋 PRODUCTION MODE - Clean logging (SSL/TLS noise filtered)${NC}"
-    echo -e "${YELLOW}💡 Set REDFISH_DEBUG=true for detailed Metal3 failure debugging${NC}"
-    echo -e "${GREEN}🛡️ Binary SSL/TLS requests filtered from logs for cleaner output${NC}"
-fi
+echo -e "${BLUE}� PRODUCTION MODE - Clean logging enabled${NC}"
+echo -e "${YELLOW}💡 Use 'sudo systemctl edit redfish-vmware-server' and add 'Environment=REDFISH_DEBUG=true' for debugging${NC}"
 
 print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
@@ -105,30 +95,6 @@ install_system_dependencies() {
         fi
     else
         print_success "OpenSSL already installed"
-    fi
-}
-
-# Function to cleanup old SSL certificates
-cleanup_old_ssl_certificates() {
-    print_info "Cleaning up old SSL certificates..."
-    
-    local ssl_dir="$PROJECT_ROOT/config/ssl"
-    
-    # Remove individual node certificates as we're using Let's Encrypt for all
-    if [[ -d "$ssl_dir" ]]; then
-        print_info "Removing old SSL certificate files..."
-        rm -f "$ssl_dir"/*.crt "$ssl_dir"/*.key 2>/dev/null || true
-        print_success "Old SSL certificates removed"
-    fi
-    
-    # Check if Let's Encrypt certificates exist
-    if [[ -f "/etc/letsencrypt/live/bastion.chiaret.to/fullchain.pem" ]] && [[ -f "/etc/letsencrypt/live/bastion.chiaret.to/privkey.pem" ]]; then
-        print_success "Let's Encrypt certificates found and will be used for all nodes"
-    else
-        print_warning "Let's Encrypt certificates not found. SSL will be disabled."
-        print_info "Expected certificates at:"
-        print_info "  - /etc/letsencrypt/live/bastion.chiaret.to/fullchain.pem"
-        print_info "  - /etc/letsencrypt/live/bastion.chiaret.to/privkey.pem"
     fi
 }
 
@@ -479,8 +445,10 @@ else:
     
     echo -e "${YELLOW}🔧 Debug Mode:${NC}"
     echo ""
-    echo "# Enable debug logging"
-    echo "export REDFISH_DEBUG=true"
+    echo "# Enable debug logging (persistent)"
+    echo "sudo systemctl edit redfish-vmware-server"
+    echo "# Add the following line in the [Service] section:"
+    echo "# Environment=REDFISH_DEBUG=true"
     echo "sudo systemctl restart redfish-vmware-server"
     echo ""
 }
@@ -532,9 +500,6 @@ main() {
     # Install dependencies
     install_dependencies
     
-    # Cleanup old SSL certificates and check Let's Encrypt
-    cleanup_old_ssl_certificates
-    
     # Test VMware connectivity
     if ! test_vmware_connection; then
         print_error "VMware connectivity test failed"
@@ -583,7 +548,7 @@ case "${1:-}" in
         echo "  --test-only         Only test VMware connectivity"
         echo ""
         echo "Environment variables:"
-        echo "  REDFISH_DEBUG=true  Enable debug logging"
+        echo "  REDFISH_DEBUG=true  Enable debug logging (via systemctl edit)"
         echo ""
         exit 0
         ;;
