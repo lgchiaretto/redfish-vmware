@@ -10,7 +10,7 @@ spec:
   online: true
   bootMACAddress: "00:50:56:84:8c:23"
   bmc:
-    address: redfish+http://bastion.chiaret.to:8443/redfish/v1/Systems/skinner-worker-1
+    address: redfish://bastion.chiaret.to:8443/redfish/v1/Systems/skinner-worker-1
     credentialsName: skinner-worker-1-bmc-secret
     disableCertificateVerification: true
   customDeploy:

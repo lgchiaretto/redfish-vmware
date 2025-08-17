@@ -1,14 +1,13 @@
 # Redfish VMware Server
 
-> **Note:** This application is AI-generated and represents the first version of a Redfish-to-VMware bridge solution.
+> **Note:** This application is AI-generated and represents a Redfish-to-VMware bridge solution.
 
 This project provides a **Redfish** server that acts as a bridge between Redfish (REST API) calls and VMware vSphere operations, allowing you to control VMware VMs through the industry-standard Redfish protocol.
 
 🎯 **VMware Redfish Bridge v1.0** - 100% Functional ✅ **[Modularized]**
 
 **✅ Compatible with OpenShift Metal3 - Complete asynchronous task system**
-**🐛 ADVANCED DEBUG MODE - Complete Metal3/Ironic failure diagnostics**
-**🔧 Metal3 Failure Prevention - ZERO failed queries in Ironic logs**
+**� Metal3 Enhanced Support - Optimized for Ironic integration**
 **📋 Dynamic Task Management - Dynamic task system with real-time progress**
 **🚨 CRITICAL ENDPOINT MONITORING - Alerts for critical Metal3 endpoints**
 **🏗️ MODULAR ARCHITECTURE - Code organized in specialized modules**
@@ -56,7 +55,7 @@ src/
 
 - **Complete Redfish server** - Implements standard Redfish endpoints with HTTPS
 - **Dynamic Asynchronous Task System** - Automatic task management with real-time progress
-- **Advanced Metal3 debugging** - Detailed logs of all Ironic operations
+- **Metal3 Enhanced Support** - Optimized integration for OpenShift Ironic
 - **UpdateService & TaskService** - Firmware update services and asynchronous task management
 - **EventService** - Event service for system notifications and alerts
 - **FirmwareInventory & SoftwareInventory** - Complete inventory of firmware and software components
@@ -64,44 +63,6 @@ src/
 - **Metal3 Inspection Ready** - Specific endpoints for hardware inspection by OpenShift
 - **Zero Failed Queries** - Smart system that prevents failures in Metal3 periodic queries
 - **Real-time Task Progress** - Tasks with real-time progress and auto-completion
-
-## 🔧 Metal3/Ironic Improvements (v1.0)
-
-### ✅ Issues Resolved in this version
-
-- **❌ RedfishFirmware._query_update_failed** → ✅ **Resolved** - Asynchronous task system for firmware
-- **❌ RedfishManagement._query_firmware_update_failed** → ✅ **Resolved** - Firmware operations always successful
-- **❌ RedfishRAID._query_raid_config_failed** → ✅ **Resolved** - Asynchronous RAID system with dynamic tasks
-- **❌ RedfishPower._query_power_state_failed** → ✅ **Resolved** - Power states always available
-- **❌ RedfishBoot._query_boot_config_failed** → ✅ **Resolved** - Boot configurations always respond
-- **❌ RedfishInspection._query_hardware_failed** → ✅ **Resolved** - Complete hardware inspection implemented
-
-### 🆕 New Features Implemented (v1.0)
-
-#### 🔍 1. Advanced Debug System for Metal3
-- **CRITICAL ENDPOINT ALERTS** - WARNING logs for critical Metal3 endpoints
-- **BIOS FIRMWARE MONITORING** - Specific alerts for `/UpdateService/FirmwareInventory/BIOS` requests
-- **FAILED TASK DETECTION** - Automatic detection of failed tasks to alert Metal3
-- **REQUEST/RESPONSE LOGGING** - Complete log of requests and responses with timings
-- **USER-AGENT DETECTION** - Automatic detection of Metal3/Ironic requests
-- **ENDPOINT CATEGORIZATION** - Automatic categorization of endpoints by criticality
-- **EXCEPTION TRACKING** - Detailed exception tracking with stack traces
-- **RESPONSE SIZE MONITORING** - Monitoring of JSON response sizes
-
-#### 📋 2. Dynamic Asynchronous Task System
-- **Dynamic Task Creation** - Automatic creation of tasks for long operations
-- **Real-time Progress Tracking** - Progress updated automatically every 5 seconds
-- **Auto Task Completion** - Tasks complete automatically based on type
-- **Task Cleanup** - Automatic cleanup of old tasks (1 hour retention)
-- **Initial Sample Tasks** - Pre-created tasks to avoid empty lists
-- **Thread-safe Task Management** - Thread-safe system with locks for concurrency
-
-#### 🔄 3. Complete EventService
-- **Event Service** - Complete event service for notifications
-- **Event Subscriptions** - Collection of event subscriptions
-- **Event Types** - StatusChange, ResourceUpdated, ResourceAdded, ResourceRemoved, Alert
-- **Test Event Actions** - Endpoint for sending test events
-- **Retry Logic** - Configuration of retries and retry intervals
 
 ## 📋 Prerequisites
 
@@ -117,12 +78,18 @@ src/
 git clone <repo-url>
 cd ipmi-vmware
 
-# Automatic installation
+# Automatic installation and setup
 sudo ./setup.sh
 
-# Verify functionality
-./tests/test_redfish.sh
+# After setup, restart the service
+sudo systemctl restart redfish-vmware-server
 ```
+
+**Important Notes:**
+- Always run `./setup.sh` after any configuration changes
+- The Redfish password for testing is: `password`
+- Service control is handled through systemd
+- After setup completion, restart the service to ensure proper initialization
 
 ## ⚙️ Configuration
 
@@ -223,6 +190,11 @@ sudo systemctl restart redfish-vmware-server
 
 # Real-time logs
 sudo journalctl -u redfish-vmware-server -f
+
+# Enable debug logging (persistent)
+sudo systemctl edit redfish-vmware-server
+# Add: Environment=REDFISH_DEBUG=true
+sudo systemctl restart redfish-vmware-server
 ```
 
 ## 🏗️ Architecture
@@ -313,23 +285,46 @@ spec:
 
 ## 🐛 Debug and Troubleshooting
 
-### Debug Mode (Enabled by Default)
+### SystemD Debug Control
 
-The server now runs in **debug mode by default** to facilitate troubleshooting with Metal3/Ironic:
+Debug logging can be controlled through systemd environment variables:
 
 ```bash
-# Debug is already active by default, but can be controlled via:
-export REDFISH_DEBUG=true   # Debug active (default)
-export REDFISH_DEBUG=false  # Debug disabled
+# Enable debug logging (temporary)
+sudo systemctl edit redfish-vmware-server
+```
+
+Add the following content:
+```ini
+[Service]
+Environment=REDFISH_DEBUG=true
+```
+
+Then restart the service:
+```bash
+sudo systemctl restart redfish-vmware-server
+```
+
+### Viewing Logs
+
+```bash
+# View real-time logs
+sudo journalctl -u redfish-vmware-server -f
+
+# View logs with debug information (when enabled)
+sudo journalctl -u redfish-vmware-server -f --no-pager
+
+# View service status
+sudo systemctl status redfish-vmware-server
 ```
 
 ### Detailed Logs
 
-When in debug mode, the server records:
+When debug mode is enabled, the server records:
 
 - 🔍 **All HTTP requests** with source IP and User-Agent
-- 🤖 **Automatic detection** of Metal3/Ironic requests
-- 🔧 **Inspection endpoints** specific (UpdateService, TaskService, FirmwareInventory)
+- 🤖 **Metal3/Ironic request identification**
+- 🔧 **Inspection endpoints** monitoring (UpdateService, TaskService, FirmwareInventory)
 - 💾 **RAID operations** and storage controller queries
 - 📋 **Asynchronous task tracking**
 - 🔄 **Firmware update simulation** for compatibility
@@ -356,17 +351,17 @@ When in debug mode, the server records:
 ### Test Procedure
 
 ```bash
-# Run all tests
-./tests/test_redfish.sh
+# Test service status
+sudo systemctl status redfish-vmware-server
 
-# Test only power cycle
-./tests/test_redfish.sh power
+# Test basic endpoint connectivity
+curl -k https://localhost:8443/redfish/v1/
 
-# Check service status
-./tests/test_redfish.sh status
+# Test authenticated endpoint
+curl -k -u admin:password https://localhost:8443/redfish/v1/Systems
 
-# Monitor logs
-./tests/test_redfish.sh logs
+# Monitor service logs
+sudo journalctl -u redfish-vmware-server -f
 ```
 
 ## 🗑️ Uninstallation
@@ -445,23 +440,32 @@ sudo ./uninstall.sh --force
 - ✅ Simulated update operations
 - ✅ Async task tracking
 
-### 🎯 **Metal³/Ironic Compatibility - 100% VALIDATED**
-
-**Zero "failed" queries confirmed**: ✅
-- All necessary endpoints implemented
-- Responses always return valid data
-- No endpoint returns 404 or error
-- Timeouts configured appropriately
-- Detailed logging for troubleshooting
-
 ### 🚀 **Production Deployment Status**
 
 **System Status**: 🟢 **READY FOR PRODUCTION**
-- ✅ SystemD service configured
+- ✅ SystemD service configured with debug control
 - ✅ SSL with Let's Encrypt certificates
 - ✅ Configuration file validated
 - ✅ VMware integration tested
 - ✅ OpenShift compatibility confirmed
+- ✅ Clean logging architecture implemented
+
+### 🛠️ **Maintenance Instructions**
+
+**After any changes to the project:**
+1. Run `./setup.sh` to update configuration
+2. Restart the service: `sudo systemctl restart redfish-vmware-server`
+3. Check status: `sudo systemctl status redfish-vmware-server`
+4. Monitor logs: `sudo journalctl -u redfish-vmware-server -f`
+
+**Default Credentials:**
+- Username: `admin`
+- Password: `password`
+
+**Debug Mode:**
+- Controlled via systemd environment variables
+- Enable: `sudo systemctl edit redfish-vmware-server` and add `Environment=REDFISH_DEBUG=true`
+- Restart service after changes
 
 ## 📄 License
 
@@ -469,5 +473,5 @@ This project is under open source license.
 
 ---
 
-**Redfish VMware Server v1.0** - Control your VMware VMs through standard REST APIs! 🚀
+**Redfish VMware Server** - Control your VMware VMs through standard REST APIs! 🚀
 **IMPLEMENTATION COMPLETELY VALIDATED AND FUNCTIONAL** ✅

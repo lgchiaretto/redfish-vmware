@@ -7,7 +7,7 @@ This project provides a **Redfish** server that acts as a bridge between Redfish
 🎯 **VMware Redfish Bridge v1.0** - 100% Functional ✅ **[Modularized]**
 
 **✅ Compatible with OpenShift Metal3 - Complete asynchronous task system**
-**🐛 ADVANCED DEBUG MODE - Complete Metal3/Ironic failure diagnostics**
+**� Metal3 Enhanced Support - Optimized for Ironic integration**
 **🔧 Metal3 Failure Prevention - ZERO failed queries in Ironic logs**
 **📋 Dynamic Task Management - Dynamic task system with real-time progress**
 **🚨 CRITICAL ENDPOINT MONITORING - Alerts for critical Metal3 endpoints**
@@ -47,7 +47,7 @@ src/
 
 - **Complete Redfish server** - Implements standard Redfish endpoints with HTTPS
 - **Dynamic Asynchronous Task System** - Automatic task management with real-time progress
-- **Advanced Metal3 debugging** - Detailed logs of all Ironic operations
+- **Metal3 Enhanced Support** - Optimized integration for OpenShift Ironic
 - **UpdateService & TaskService** - Firmware update services and asynchronous task management
 - **EventService** - Event service for system notifications and alerts
 - **FirmwareInventory & SoftwareInventory** - Complete inventory of firmware and software components
@@ -259,21 +259,21 @@ spec:
   online: true
 ```
 
-## 🐛 Debug and Troubleshooting
+## � Troubleshooting
 
-### Debug Mode (Enabled by Default)
+### SystemD Debug Control
 
-The server now runs in **debug mode by default** to facilitate troubleshooting with Metal3/Ironic:
+Debug logging can be controlled through systemd:
 
 ```bash
-# Debug is already active by default, but can be controlled via:
-export REDFISH_DEBUG=true   # Debug active (default)
-export REDFISH_DEBUG=false  # Debug disabled
+# Enable debug logging
+sudo systemctl edit redfish-vmware-server
+# Add: Environment=REDFISH_DEBUG=true
+sudo systemctl restart redfish-vmware-server
+
+# View logs
+sudo journalctl -u redfish-vmware-server -f
 ```
-
-### Detailed Logs
-
-When in debug mode, the server records:
 
 - 🔍 **All HTTP requests** with source IP and User-Agent
 - 🤖 **Automatic detection** of Metal3/Ironic requests

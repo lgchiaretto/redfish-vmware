@@ -374,18 +374,6 @@ sudo ./setup.sh
 ./tests/test_redfish.sh
 ```
 
-## 🐛 Debug e Troubleshooting
-
-### Debug Mode (Ativado por Padrão)
-
-O servidor agora roda em **debug mode por padrão** para facilitar o troubleshooting com Metal3/Ironic:
-
-```bash
-# Debug já está ativo por padrão, mas pode ser controlado via:
-export REDFISH_DEBUG=true   # Debug ativo (padrão)
-export REDFISH_DEBUG=false  # Debug desabilitado
-```
-
 ### Logs Detalhados
 
 Quando em debug mode, o servidor registra:
