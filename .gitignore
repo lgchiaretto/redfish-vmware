@@ -35,7 +35,7 @@ ENV/
 # Logs
 *.log
 logs/
-/var/log/ipmi-vmware-bridge.log
+/var/log/redfish-vmware-bridge.log
 
 # Temporary files
 *.tmp

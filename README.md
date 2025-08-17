@@ -67,7 +67,7 @@ src/
 ```bash
 # Clone the project
 git clone <repo-url>
-cd ipmi-vmware
+cd redfish-vmware
 
 # Automatic installation
 sudo ./setup.sh

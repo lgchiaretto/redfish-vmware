@@ -186,7 +186,7 @@ def main():
     parser = argparse.ArgumentParser(description='VMware Redfish Server - Modularized')
     parser.add_argument(
         '--config', 
-        default='/home/lchiaret/git/ipmi-vmware/config/config.json',
+        default='/home/lchiaret/git/redfish-vmware/config/config.json',
         help='Configuration file path'
     )
     

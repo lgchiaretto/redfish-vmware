@@ -8,10 +8,10 @@ Wants=network-online.target
 Type=simple
 User=root
 Group=root
-WorkingDirectory=/home/lchiaret/git/ipmi-vmware
+WorkingDirectory=/home/lchiaret/git/redfish-vmware
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/home/lchiaret/git/ipmi-vmware/src
-ExecStart=/usr/bin/python3 /home/lchiaret/git/ipmi-vmware/src/redfish_server.py --config /home/lchiaret/git/ipmi-vmware/config/config.json
+Environment=PYTHONPATH=/home/lchiaret/git/redfish-vmware/src
+ExecStart=/usr/bin/python3 /home/lchiaret/git/redfish-vmware/src/redfish_server.py --config /home/lchiaret/git/redfish-vmware/config/config.json
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=process
 Restart=always
@@ -24,7 +24,7 @@ NoNewPrivileges=false
 PrivateTmp=false
 ProtectSystem=false
 ProtectHome=false
-ReadWritePaths=/var/log /var/run /home/lchiaret/git/ipmi-vmware
+ReadWritePaths=/var/log /var/run /home/lchiaret/git/redfish-vmware
 
 # Logging
 StandardOutput=journal
