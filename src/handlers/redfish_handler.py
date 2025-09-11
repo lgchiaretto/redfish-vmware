@@ -127,6 +127,11 @@ class RedfishHandler:
             self._send_json_response(request_handler, 200, data)
             return
         
+        # Health endpoint - public for monitoring
+        if path == '/redfish/v1/health' or path == '/redfish/v1/health/':
+            self._handle_health_endpoint(request_handler)
+            return
+        
         # Check authentication for all other endpoints
         authenticated, username = self.auth_manager.authenticate_request(request_handler)
         if not authenticated:
@@ -320,6 +325,98 @@ class RedfishHandler:
             }
         }
         request_handler.wfile.write(json.dumps(error_data).encode('utf-8'))
+    
+    def _handle_health_endpoint(self, request_handler):
+        """Handle health monitoring endpoint with comprehensive statistics"""
+        logger.debug("📊 Health endpoint requested")
+        
+        try:
+            # Import here to avoid circular imports
+            from handlers.http_handler import get_request_statistics
+            from redfish_server import health_monitor
+            
+            # Collect health data
+            health_data = {
+                "@odata.type": "#HealthInfo.v1_0_0.HealthInfo",
+                "@odata.id": "/redfish/v1/health",
+                "Id": "HealthInfo",
+                "Name": "Redfish VMware Server Health Information",
+                "Description": "Health monitoring and statistics for the Redfish VMware Server",
+                "Status": {
+                    "State": "Enabled",
+                    "Health": "OK"
+                },
+                "ServerInfo": {
+                    "ServiceName": "redfish-vmware-server",
+                    "Version": "Enhanced v1.0",
+                    "ServerType": "VMware Redfish Bridge",
+                    "EnhancedDebuggingEnabled": True
+                },
+                "Statistics": {},
+                "VMwareConnections": {},
+                "RequestStatistics": {},
+                "Timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+            }
+            
+            # Get server statistics if available
+            try:
+                server_stats = health_monitor.get_health_stats()
+                health_data["Statistics"] = server_stats
+            except:
+                health_data["Statistics"] = {"error": "Server statistics not available"}
+            
+            # Get request statistics
+            try:
+                request_stats = get_request_statistics()
+                health_data["RequestStatistics"] = request_stats
+            except:
+                health_data["RequestStatistics"] = {"error": "Request statistics not available"}
+            
+            # Get VMware connection health
+            vm_health = {}
+            for vm_name, client in self.vmware_clients.items():
+                try:
+                    vm_stats = client.get_connection_stats()
+                    vm_health[vm_name] = vm_stats
+                except Exception as e:
+                    vm_health[vm_name] = {"error": str(e), "connected": False}
+            
+            health_data["VMwareConnections"] = vm_health
+            
+            # Determine overall health
+            overall_connected = sum(1 for vm in vm_health.values() if vm.get('connected', False))
+            total_vms = len(vm_health)
+            
+            if overall_connected == total_vms and total_vms > 0:
+                health_data["Status"]["Health"] = "OK"
+                health_data["Status"]["HealthRollup"] = "OK"
+            elif overall_connected > 0:
+                health_data["Status"]["Health"] = "Warning"
+                health_data["Status"]["HealthRollup"] = "Warning"
+            else:
+                health_data["Status"]["Health"] = "Critical"
+                health_data["Status"]["HealthRollup"] = "Critical"
+            
+            health_data["ConnectedVMs"] = overall_connected
+            health_data["TotalVMs"] = total_vms
+            
+            logger.info(f"📊 Health check: {overall_connected}/{total_vms} VMs connected")
+            self._send_json_response(request_handler, 200, health_data)
+            
+        except Exception as e:
+            logger.error(f"❌ Error in health endpoint: {e}")
+            error_data = {
+                "error": {
+                    "code": "Base.1.0.500",
+                    "message": f"Health endpoint error: {str(e)}"
+                },
+                "Status": {
+                    "State": "Enabled", 
+                    "Health": "Critical"
+                },
+                "Timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+            }
+            self._send_json_response(request_handler, 500, error_data)
     
     def shutdown(self):
         """Shutdown the handler"""

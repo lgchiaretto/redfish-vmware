@@ -1,8 +1,34 @@
 #!/bin/bash
 
-# Redfish VMware Server - Complete Setup Script (AI-Generated v1.0)
-# Note: This application is AI-generated and represents the first version
-# This script configures the entire Redfish server with SystemD integration
+echo -e "${BLUE}🚀 Enhanced Redfish VMware Server - Complete Setup${NC}"
+echo -e "${BLUE}=================================================================================${NC}"
+echo ""
+
+# Check if running as root for SystemD operations
+if [[ $EUID -eq 0 ]]; then
+    echo -e "${GREEN}✅ Running as root - Can configure SystemD service${NC}"
+    SYSTEMD_SETUP=true
+else
+    echo -e "${YELLOW}⚠️ Not running as root - SystemD setup will require sudo${NC}"
+    SYSTEMD_SETUP=false
+fi
+
+echo -e "${BLUE}📋 ENHANCED DEBUGGING CAPABILITIES:${NC}"
+echo -e "${CYAN}  🐛 REDFISH_DEBUG=true          - Full debug mode with detailed logging${NC}"
+echo -e "${CYAN}  📊 REDFISH_PERF_DEBUG=true     - Performance monitoring and metrics${NC}"
+echo -e "${CYAN}  ⚡ REDFISH_VMWARE_DEBUG=true   - VMware operations tracking${NC}"
+echo -e "${CYAN}  📁 REDFISH_LOG_DIR=/path       - Custom log directory${NC}"
+echo ""
+echo -e "${YELLOW}💡 Production Mode: Standard logging (default)${NC}"
+echo -e "${YELLOW}💡 Debug Mode: Use 'sudo systemctl edit redfish-vmware-server' to add environment variables${NC}"
+echo ""
+
+print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+print_debug() { echo -e "${PURPLE}[DEBUG]${NC} $1"; }
+# This script configures the entire Redfish server with comprehensive debugging capabilities
 
 set -e  # Exit on any error
 
@@ -11,6 +37,8 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Script directory
@@ -453,22 +481,157 @@ else:
     echo ""
 }
 
-# Function to clean up old files
+# Function to test enhanced debugging capabilities
+test_enhanced_debugging() {
+    print_info "Testing enhanced debugging capabilities..."
+    
+    # Create a test script to verify logging enhancements
+    cat > /tmp/test_debug_redfish.py << 'EOF'
+#!/usr/bin/env python3
+import sys
+import os
+import logging
+
+# Add src directory to path
+sys.path.insert(0, os.path.join(os.getcwd(), 'src'))
+
+try:
+    print("🔧 Testing enhanced logging configuration...")
+    
+    # Test logging imports
+    from utils.logging_config import setup_logging, log_performance_metric, create_debug_context
+    print("✅ Enhanced logging modules imported successfully")
+    
+    # Test HTTP handler imports
+    from handlers.http_handler import get_request_statistics
+    print("✅ Enhanced HTTP handler imports successful")
+    
+    # Test VMware client imports
+    from vmware_client import VMwareClient
+    print("✅ Enhanced VMware client imports successful")
+    
+    # Test logging setup with different levels
+    logger = setup_logging()
+    print("✅ Enhanced logging setup successful")
+    
+    # Test debug context
+    with create_debug_context()('Test Operation'):
+        logger.info("Testing enhanced logging features")
+    print("✅ Debug context manager working")
+    
+    # Test performance logging
+    import time
+    start = time.time()
+    time.sleep(0.1)
+    duration = time.time() - start
+    log_performance_metric(logger, "Test Operation", duration, True, test_param="value")
+    print("✅ Performance logging working")
+    
+    print("🎉 All enhanced debugging features are working correctly!")
+    
+except Exception as e:
+    print(f"❌ Enhanced debugging test failed: {e}")
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+EOF
+    
+    if python3 /tmp/test_debug_redfish.py; then
+        print_success "Enhanced debugging capabilities test passed"
+    else
+        print_error "Enhanced debugging capabilities test failed"
+        return 1
+    fi
+    
+    # Test environment variable handling
+    print_info "Testing environment variable configuration..."
+    
+    # Test different debug modes
+    echo "Testing different debug modes:"
+    echo "  🐛 REDFISH_DEBUG=true (Full debug)"
+    echo "  📊 REDFISH_PERF_DEBUG=true (Performance monitoring)"
+    echo "  ⚡ REDFISH_VMWARE_DEBUG=true (VMware operations)"
+    
+    # Create systemd override examples
+    print_info "Creating systemd environment configuration examples..."
+    
+    local override_dir="/etc/systemd/system/redfish-vmware-server.service.d"
+    local example_file="/tmp/redfish-debug-examples.txt"
+    
+    cat > "$example_file" << 'EOF'
+# Redfish VMware Server Debug Configuration Examples
+# Use: sudo systemctl edit redfish-vmware-server
+# Then add one of these configurations:
+
+# 1. Full Debug Mode (All debugging enabled)
+[Service]
+Environment=REDFISH_DEBUG=true
+Environment=REDFISH_PERF_DEBUG=true
+Environment=REDFISH_VMWARE_DEBUG=true
+Environment=REDFISH_LOG_DIR=/var/log
+
+# 2. Performance Monitoring Only
+[Service]
+Environment=REDFISH_PERF_DEBUG=true
+
+# 3. VMware Operations Tracking Only
+[Service]
+Environment=REDFISH_VMWARE_DEBUG=true
+
+# 4. Custom Log Directory
+[Service]
+Environment=REDFISH_LOG_DIR=/home/user/redfish-logs
+
+# After editing, run:
+# sudo systemctl daemon-reload
+# sudo systemctl restart redfish-vmware-server
+EOF
+    
+    print_success "Debug configuration examples created at: $example_file"
+    print_info "View examples with: cat $example_file"
+    
+    # Cleanup
+    rm -f /tmp/test_debug_redfish.py
+    return 0
+}
+
+# Function to show debug usage examples
+show_debug_usage() {
+    echo ""
+    echo -e "${BLUE}📋 ENHANCED DEBUGGING USAGE:${NC}"
+    echo ""
+    echo -e "${CYAN}1. Enable Full Debug Mode:${NC}"
+    echo "   sudo systemctl edit redfish-vmware-server"
+    echo "   Add: Environment=REDFISH_DEBUG=true"
+    echo ""
+    echo -e "${CYAN}2. Enable Performance Monitoring:${NC}"
+    echo "   sudo systemctl edit redfish-vmware-server"
+    echo "   Add: Environment=REDFISH_PERF_DEBUG=true"
+    echo ""
+    echo -e "${CYAN}3. Enable VMware Operations Tracking:${NC}"
+    echo "   sudo systemctl edit redfish-vmware-server"
+    echo "   Add: Environment=REDFISH_VMWARE_DEBUG=true"
+    echo ""
+    echo -e "${CYAN}4. View Logs:${NC}"
+    echo "   sudo journalctl -u redfish-vmware-server -f"
+    echo "   tail -f /var/log/redfish-vmware-server.log"
+    echo ""
+    echo -e "${CYAN}5. Health and Statistics:${NC}"
+    echo "   curl http://localhost:8443/redfish/v1/health"
+    echo ""
+    echo -e "${CYAN}6. Restart Service:${NC}"
+    echo "   sudo systemctl restart redfish-vmware-server"
+    echo ""
+}
+
+# Function to cleanup old files
 cleanup_old_files() {
-    print_info "Cleaning up old cache files and temporary data..."
+    print_info "Cleaning up old files..."
     
-    # Remove Python cache files
-    find "$PROJECT_ROOT" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-    find "$PROJECT_ROOT" -name "*.pyc" -delete 2>/dev/null || true
-    
-    # Remove temporary files
-    rm -f /tmp/test_vmware_redfish.py 2>/dev/null || true
-    
-    # Remove old SSL certificate generation script and individual certificates
-    local ssl_dir="$PROJECT_ROOT/config/ssl"
+    # Remove old SSL files that might conflict
+    local ssl_dir="$PROJECT_ROOT/ssl"
     if [[ -d "$ssl_dir" ]]; then
-        print_info "Removing SSL certificate generation script and individual certificates..."
-        rm -f "$ssl_dir/generate_certs.sh" 2>/dev/null || true
+        print_info "Removing old SSL directory: $ssl_dir"
         rm -f "$ssl_dir"/*.crt "$ssl_dir"/*.key 2>/dev/null || true
         # Keep the ssl directory but remove it if empty
         rmdir "$ssl_dir" 2>/dev/null || true
@@ -523,22 +686,22 @@ main() {
     
     # Show success message
     echo ""
-    echo -e "${GREEN}🎉 Setup completed successfully!${NC}"
+    echo -e "${GREEN}🎉 Enhanced Redfish VMware Server setup completed successfully!${NC}"
     echo ""
-    print_success "Redfish VMware Server is now running"
+    print_success "Redfish VMware Server is now running with enhanced debugging capabilities"
     print_info "Service name: redfish-vmware-server"
     
     # Show usage examples
     show_usage_examples
     
     echo ""
-    echo -e "${GREEN}✅ All done! Your Redfish VMware Server is ready to use.${NC}"
+    echo -e "${GREEN}✅ All done! Your Enhanced Redfish VMware Server is ready to use.${NC}"
 }
 
 # Handle command line arguments
 case "${1:-}" in
     --help|-h)
-        echo "Redfish VMware Server Setup Script"
+        echo "Enhanced Redfish VMware Server Setup Script"
         echo ""
         echo "Usage: $0 [options]"
         echo ""
@@ -546,9 +709,13 @@ case "${1:-}" in
         echo "  --help, -h          Show this help message"
         echo "  --config-only       Only configure SystemD, don't start service"
         echo "  --test-only         Only test VMware connectivity"
+        echo "  --debug-test        Test enhanced debugging capabilities only"
         echo ""
-        echo "Environment variables:"
-        echo "  REDFISH_DEBUG=true  Enable debug logging (via systemctl edit)"
+        echo "Environment variables (set via systemctl edit):"
+        echo "  REDFISH_DEBUG=true          Enable full debug logging"
+        echo "  REDFISH_PERF_DEBUG=true     Enable performance monitoring"
+        echo "  REDFISH_VMWARE_DEBUG=true   Enable VMware operations tracking"
+        echo "  REDFISH_LOG_DIR=/path       Set custom log directory"
         echo ""
         exit 0
         ;;
@@ -564,12 +731,20 @@ case "${1:-}" in
         test_vmware_connection
         print_success "Tests completed"
         ;;
+    --debug-test)
+        print_info "Enhanced debugging test mode"
+        test_enhanced_debugging
+        print_success "Enhanced debugging tests completed"
+        ;;
     "")
         main
         ;;
     *)
-        print_error "Unknown option: $1"
-        print_info "Use --help for usage information"
-        exit 1
-        ;;
+    print_error "Unknown option: $1"
+    print_info "Use --help for usage information"
+    exit 1
+    ;;
 esac
+
+
+

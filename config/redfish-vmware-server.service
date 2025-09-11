@@ -10,6 +10,9 @@ User=root
 Group=root
 WorkingDirectory=/home/lchiaret/git/redfish-vmware
 Environment=PYTHONUNBUFFERED=1
+Environment=REDFISH_DEBUG=true
+Environment=REDFISH_PERF_DEBUG=true
+Environment=REDFISH_VMWARE_DEBUG=true
 Environment=PYTHONPATH=/home/lchiaret/git/redfish-vmware/src
 ExecStart=/usr/bin/python3 /home/lchiaret/git/redfish-vmware/src/redfish_server.py --config /home/lchiaret/git/redfish-vmware/config/config.json
 ExecReload=/bin/kill -HUP $MAINPID

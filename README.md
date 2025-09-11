@@ -55,7 +55,57 @@ src/
 - **Zero Failed Queries** - Smart system that prevents failures in Metal3 periodic queries
 - **Real-time Task Progress** - Tasks with real-time progress and auto-completion
 
-## 📋 Prerequisites
+## � Enhanced Debugging and Monitoring
+
+### Debug Configuration
+
+Configure debug levels using systemd environment variables:
+
+```bash
+# Enable full debug mode
+sudo systemctl edit redfish-vmware-server
+# Add:
+[Service]
+Environment=REDFISH_DEBUG=true
+Environment=REDFISH_PERF_DEBUG=true
+Environment=REDFISH_VMWARE_DEBUG=true
+
+# Restart service
+sudo systemctl restart redfish-vmware-server
+```
+
+### Debug Levels
+
+| Variable | Description | Use Case |
+|----------|-------------|----------|
+| `REDFISH_DEBUG=true` | Full debug logging | Complete request/response tracing |
+| `REDFISH_PERF_DEBUG=true` | Performance monitoring | Performance bottleneck analysis |
+| `REDFISH_VMWARE_DEBUG=true` | VMware operations | VMware API troubleshooting |
+| `REDFISH_LOG_DIR=/path` | Custom log location | Centralized logging |
+
+### Monitoring Endpoints
+
+```bash
+# Health and statistics
+curl http://localhost:8443/redfish/v1/health
+
+# View logs in real-time
+sudo journalctl -u redfish-vmware-server -f
+
+# Performance monitoring
+tail -f /var/log/redfish-vmware-server.log | grep "📊"
+```
+
+### Log Analysis
+
+- **🚀** - Request start
+- **✅** - Successful operation  
+- **❌** - Failed operation
+- **📊** - Performance metrics
+- **🔧** - VMware operations
+- **⚠️** - Warnings and issues
+
+## �📋 Prerequisites
 
 - **Python 3.11+**
 - **VMware vCenter/ESXi** - Access to vSphere API
@@ -267,22 +317,6 @@ sudo journalctl -u redfish-vmware-server -f
 - 📋 **Asynchronous task tracking**
 - 🔄 **Firmware update simulation** for compatibility
 
-## 🧪 Testing
-
-### Test Procedure
-
-```bash
-# Run all tests
-./tests/test_redfish.sh
-
-# Test only power cycle
-./tests/test_redfish.sh power
-
-# Check service status
-./tests/test_redfish.sh status
-
-# Monitor logs
-./tests/test_redfish.sh logs
 ```
 
 ## 🗑️ Uninstallation
