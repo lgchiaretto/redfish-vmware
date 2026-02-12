@@ -9,6 +9,7 @@ Converts Redfish operations to VMware vSphere API calls with detailed tracking.
 
 import json
 import logging
+import os
 import ssl
 import socketserver
 import sys
