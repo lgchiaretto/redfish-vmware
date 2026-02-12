@@ -6,6 +6,10 @@
     "port": 443,
     "disable_ssl": true
   },
+  "ssl": {
+    "cert_path": "/etc/letsencrypt/live/your-host.example.com/fullchain.pem",
+    "key_path": "/etc/letsencrypt/live/your-host.example.com/privkey.pem"
+  },
   "vms": [
     {
       "name": "vm-master-0",

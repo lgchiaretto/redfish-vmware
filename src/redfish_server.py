@@ -255,19 +255,23 @@ class RedfishServer:
     def _setup_ssl(self, server, vm_name, port):
         """Setup SSL configuration for a server"""
         ssl_config = self.config.get('ssl', {})
-        ssl_cert_path = ssl_config.get('cert_path', '/etc/letsencrypt/live/bastion.chiaret.to/fullchain.pem')
-        ssl_key_path = ssl_config.get('key_path', '/etc/letsencrypt/live/bastion.chiaret.to/privkey.pem')
+        ssl_cert_path = ssl_config.get('cert_path')
+        ssl_key_path = ssl_config.get('key_path')
+        
+        if not ssl_cert_path or not ssl_key_path:
+            logger.warning(f"⚠️  SSL cert_path/key_path not defined in config, running HTTP only for {vm_name}")
+            logger.warning(f"💡 Add 'ssl' section with 'cert_path' and 'key_path' to config.json to enable HTTPS")
+            return
         
         try:
-            import os
             if os.path.exists(ssl_cert_path) and os.path.exists(ssl_key_path):
                 context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
                 context.load_cert_chain(ssl_cert_path, ssl_key_path)
                 server.socket = context.wrap_socket(server.socket, server_side=True)
-                logger.info(f"🔒 HTTPS enabled for {vm_name} with Let's Encrypt certificates")
-                logger.info(f"💡 Client should connect to: https://bastion.chiaret.to:{port}/redfish/v1/")
+                logger.info(f"🔒 HTTPS enabled for {vm_name} using certificates from config")
+                logger.info(f"   cert: {ssl_cert_path}")
             else:
-                logger.warning(f"⚠️  Let's Encrypt certificates not found, running HTTP only")
+                logger.warning(f"⚠️  SSL certificates not found, running HTTP only for {vm_name}")
                 logger.warning(f"   Expected: {ssl_cert_path} and {ssl_key_path}")
         except Exception as ssl_error:
             logger.warning(f"⚠️  HTTPS setup failed for {vm_name}, falling back to HTTP: {ssl_error}")
