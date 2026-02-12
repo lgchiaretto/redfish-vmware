@@ -157,9 +157,10 @@ configure_systemd() {
         return 1
     fi
     
-    # Copy service file
+    # Copy service file and replace placeholder paths with actual PROJECT_ROOT
     run_sudo cp "$service_file" "$systemd_file"
-    print_success "Service file copied to $systemd_file"
+    run_sudo sed -i "s|__PROJECT_ROOT__|${PROJECT_ROOT}|g" "$systemd_file"
+    print_success "Service file copied to $systemd_file (paths set to $PROJECT_ROOT)"
     
     # Reload systemd
     run_sudo systemctl daemon-reload
@@ -322,7 +323,11 @@ print(' '.join(ports))
         
         # Try to save iptables rules
         if command_exists iptables-save; then
-            run_sudo iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+            if [[ -d /etc/iptables ]]; then
+                run_sudo sh -c 'iptables-save > /etc/iptables/rules.v4' 2>/dev/null || true
+            else
+                print_warning "Directory /etc/iptables does not exist, skipping iptables rules persistence"
+            fi
         fi
         
     else

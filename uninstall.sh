@@ -186,7 +186,7 @@ cleanup_logs() {
     
     local log_files=(
         "/var/log/redfish-vmware-server.log"
-        "/home/lchiaret/redfish-vmware-server.log"
+        "$HOME/redfish-vmware-server.log"
         "./redfish-vmware-server.log"
     )
     

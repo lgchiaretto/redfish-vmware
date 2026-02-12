@@ -8,13 +8,13 @@ Wants=network-online.target
 Type=simple
 User=root
 Group=root
-WorkingDirectory=/home/lchiaret/git/redfish-vmware
+WorkingDirectory=__PROJECT_ROOT__
 Environment=PYTHONUNBUFFERED=1
 Environment=REDFISH_DEBUG=true
 Environment=REDFISH_PERF_DEBUG=true
 Environment=REDFISH_VMWARE_DEBUG=true
-Environment=PYTHONPATH=/home/lchiaret/git/redfish-vmware/src
-ExecStart=/usr/bin/python3 /home/lchiaret/git/redfish-vmware/src/redfish_server.py --config /home/lchiaret/git/redfish-vmware/config/config.json
+Environment=PYTHONPATH=__PROJECT_ROOT__/src
+ExecStart=/usr/bin/python3 __PROJECT_ROOT__/src/redfish_server.py --config __PROJECT_ROOT__/config/config.json
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=process
 Restart=always
@@ -27,7 +27,7 @@ NoNewPrivileges=false
 PrivateTmp=false
 ProtectSystem=false
 ProtectHome=false
-ReadWritePaths=/var/log /var/run /home/lchiaret/git/redfish-vmware
+ReadWritePaths=/var/log /var/run __PROJECT_ROOT__
 
 # Logging
 StandardOutput=journal
