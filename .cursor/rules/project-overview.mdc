@@ -1,0 +1,75 @@
+---
+description: Core architecture and conventions for the Redfish-VMware bridge project
+alwaysApply: true
+---
+
+# Redfish-VMware Bridge - Project Context
+
+## What This Project Does
+Translates Redfish REST API calls into VMware vSphere operations. Built for OpenShift Metal3/Ironic to manage VMware VMs as bare metal hosts.
+
+## Architecture
+
+- **One Redfish HTTP server per VM**, each on its own port (8440-8444+)
+- All servers share a single `RedfishHandler` that coordinates operations
+- Entry point: `src/redfish_server.py --config config/config.json`
+
+## File Organization
+
+```
+src/
+  redfish_server.py          # Entry point, multi-server startup
+  vmware_client.py           # Unified VMware API facade
+  handlers/
+    redfish_handler.py       # Main request router (GET/POST/PATCH/DELETE)
+    http_handler.py          # Base HTTP handler with auth
+    systems_handler.py       # VM power, boot, BIOS, storage
+    managers_handler.py      # BMC, virtual media
+    chassis_handler.py       # Physical chassis
+    update_service_handler.py # Firmware/software inventory
+  vmware/
+    connection.py            # vSphere connection (pyVmomi)
+    vm_operations.py         # VM discovery, info
+    power_operations.py      # Power on/off/reset
+    media_operations.py      # ISO mount, boot order
+  auth/manager.py            # Basic auth (admin/password)
+  tasks/manager.py           # Async task tracking for Metal3
+  models/redfish_schemas.py  # Redfish JSON response builders
+  utils/logging_config.py    # Logging setup
+config/
+  config.json                # VM definitions and vCenter credentials
+  config.json.example        # Template config
+openshift/                   # BareMetalHost YAML examples
+```
+
+## Critical Conventions
+
+1. **Python 3.11+** required
+2. **Logging**: use `logger = logging.getLogger(__name__)` per module
+3. **Error responses**: always use `_send_error_response(handler, status_code, message)`
+4. **Success responses**: always use `_send_json_response(handler, status_code, data)`
+5. **VMware operations** return `True/False` - handlers translate to HTTP codes
+6. **Redfish responses** must include `@odata.type`, `@odata.id`, proper schema versions
+7. **Auth**: fixed credentials `admin:password`, public endpoints: `/redfish/v1/` and `/redfish/v1/Systems`
+8. **No automated tests exist** - test manually with curl or via Metal3 integration
+9. **Config**: never commit `config/config.json` (contains credentials)
+
+## Running the Application
+
+```bash
+# Development
+python3 src/redfish_server.py --config config/config.json
+
+# Production (systemd)
+sudo systemctl start redfish-vmware-server
+
+# Debug mode
+REDFISH_DEBUG=true python3 src/redfish_server.py --config config/config.json
+```
+
+## Dependencies
+
+- `pyvmomi` - VMware vSphere API
+- `psutil` - System monitoring
+- `pyyaml` - YAML support
+- Standard library: `http.server`, `ssl`, `threading`, `json`

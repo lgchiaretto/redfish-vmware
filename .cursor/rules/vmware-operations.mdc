@@ -1,0 +1,76 @@
+---
+description: Patterns for VMware vSphere API operations
+globs: src/vmware/**/*.py,src/vmware_client.py
+alwaysApply: false
+---
+
+# VMware Operations Patterns
+
+## Module Structure
+
+```
+src/vmware/
+  connection.py       # VMwareConnection - manages vSphere session
+  vm_operations.py    # VMOperations - VM discovery and info
+  power_operations.py # PowerOperations - power on/off/reset
+  media_operations.py # MediaOperations - ISO mount, boot order
+src/vmware_client.py  # VMwareClient - facade aggregating all modules
+```
+
+## Adding a New VMware Operation
+
+1. **Add method to the appropriate module** in `src/vmware/`:
+
+```python
+def new_operation(self, vm_name):
+    try:
+        vm = self.vm_operations.get_vm(vm_name)
+        if not vm:
+            logger.error(f"VM '{vm_name}' not found")
+            return False
+
+        logger.info(f"Performing operation on VM '{vm_name}'")
+        # ... pyVmomi operation ...
+        task = vm.SomeOperation()
+        result = self._wait_for_task(task)
+
+        if result:
+            logger.info(f"Successfully completed operation on VM '{vm_name}'")
+        else:
+            logger.error(f"Failed operation on VM '{vm_name}'")
+        return result
+    except Exception as e:
+        logger.error(f"Error in operation for VM '{vm_name}': {e}")
+        return False
+```
+
+2. **Expose via VMwareClient facade** in `src/vmware_client.py`:
+
+```python
+@track_vmware_operation("new_operation")
+def new_operation(self, vm_name):
+    return self.power_ops.new_operation(vm_name)
+```
+
+3. **Call from handler** in the appropriate handler file.
+
+## Key Patterns
+
+- **All operations return `bool`** (True = success, False = failure)
+- **Use `_wait_for_task(task)`** for async vSphere tasks
+- **Use `self.vm_operations.get_vm(vm_name)`** to locate VMs
+- **`@track_vmware_operation` decorator** logs timing and success/failure
+- **pyVmomi types**: `vim.VirtualMachine`, `vim.Task`, `vim.vm.ConfigSpec`
+
+## Connection Management
+
+- `VMwareConnection.connect()` uses `SmartConnect` with SSL toggle
+- Connection is registered with `atexit` for cleanup
+- Check `is_connected()` before operations
+
+## Power State Mapping
+
+VMware → Redfish:
+- `poweredOn` → `On`
+- `poweredOff` → `Off`
+- `suspended` → `Paused`

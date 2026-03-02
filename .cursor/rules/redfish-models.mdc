@@ -1,0 +1,56 @@
+---
+description: Patterns for Redfish JSON schema response models
+globs: src/models/**/*.py
+alwaysApply: false
+---
+
+# Redfish Models Patterns
+
+## Structure
+
+`src/models/redfish_schemas.py` contains `RedfishModels` with static methods that return Redfish-compliant dictionaries.
+
+## Adding a New Model
+
+```python
+@staticmethod
+def get_new_resource(resource_id: str, **kwargs) -> Dict:
+    return {
+        '@odata.type': '#ResourceType.v1_0_0.ResourceType',
+        '@odata.id': f'/redfish/v1/NewResource/{resource_id}',
+        'Id': resource_id,
+        'Name': f'Resource {resource_id}',
+        'Description': 'Description here',
+        # resource-specific fields...
+    }
+```
+
+## Required Fields for All Responses
+
+Every Redfish response MUST include:
+- `@odata.type` - Schema type with version (e.g. `#ComputerSystem.v1_13_0.ComputerSystem`)
+- `@odata.id` - Canonical URI for the resource
+
+## Collection Pattern
+
+```python
+@staticmethod
+def get_resource_collection(ids: List[str]) -> Dict:
+    return {
+        '@odata.type': '#ResourceCollection.ResourceCollection',
+        '@odata.id': '/redfish/v1/Resources',
+        'Name': 'Resource Collection',
+        'Members@odata.count': len(ids),
+        'Members': [
+            {'@odata.id': f'/redfish/v1/Resources/{id}'}
+            for id in ids
+        ]
+    }
+```
+
+## Redfish Spec Compliance
+
+- Use proper DMTF schema version strings
+- Follow Redfish 1.8.0 conventions
+- Metal3/Ironic expects specific fields - check `openshift/README.md` for requirements
+- Power states must map correctly: `poweredOn` → `On`, `poweredOff` → `Off`
