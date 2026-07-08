@@ -341,6 +341,10 @@ Start by building the new image:
 podman build -f Docker/Containerfile -t registry.xphyrlab.net/markd/redfish-vmware:latest .
 ```
 
+```
+podman run -p 8443:8443 -v ./config:/app/config:Z registry.xphyrlab.net/markd/redfish-vmware:latest
+```
+
 ## 🤝 Contributing
 
 1. Fork the repository
