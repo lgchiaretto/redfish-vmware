@@ -331,6 +331,16 @@ sudo ./uninstall.sh
 sudo ./uninstall.sh --force
 ```
 
+## Running from a Docker/Podman Container
+
+It is also possible to run this application from within a container. 
+
+Start by building the new image:
+
+```
+podman build -f Docker/Containerfile -t registry.xphyrlab.net/markd/redfish-vmware:latest .
+```
+
 ## 🤝 Contributing
 
 1. Fork the repository

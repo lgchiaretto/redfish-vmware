@@ -1,0 +1,20 @@
+FROM registry.fedoraproject.org/fedora-minimal
+
+RUN microdnf install -y \
+    bash \
+    curl \
+    openssl \
+    python3 \
+    python3-pip \
+    && microdnf clean all
+RUN mkdir /app
+COPY src/ /app/src
+COPY requirements.txt /app
+WORKDIR /app
+COPY config/* /app/config/
+
+RUN pip3 install -r /app/requirements.txt
+
+EXPOSE 8443
+
+CMD ["/usr/bin/python3", "src/redfish_server.py", "--config", "config/config.json"]
