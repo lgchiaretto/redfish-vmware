@@ -121,6 +121,7 @@ class RedfishServer:
         self.servers = []
         self.running = False
         self.health_monitor = health_monitor
+        self.redfish_handler = None
         
         logger.info("🚀 Enhanced VMware Redfish Server initialized")
         logger.info(f"📋 Configuration loaded from: {config_path}")
@@ -219,14 +220,41 @@ class RedfishServer:
         """Backward-compatible alias for effective port lookup."""
         return self._get_effective_server_port(config=config, vm_config=vm_config)
 
+    def _get_datacenter_folder_refresh_interval_seconds(self, config=None):
+        """Return the configured datacenter-folder refresh interval in seconds."""
+        config = config or self.config
+        interval = config.get('datacenter_folder_refresh_interval_seconds', 300)
+
+        try:
+            interval = int(interval)
+        except (TypeError, ValueError):
+            logger.warning(f"⚠️  Invalid datacenter_folder_refresh_interval_seconds '{interval}', defaulting to 300")
+            return 300
+
+        if interval <= 0:
+            logger.warning("⚠️  Datacenter folder refresh interval must be positive, defaulting to 300 seconds")
+            return 300
+
+        return interval
+
     def _discover_vms_from_folders(self, config):
-        """Discover VMs from configured datacenter folders and merge with manual VMs"""
+        """Discover VMs from configured datacenter folders and merge with manual VMs."""
+        return self._sync_discovered_vms_from_folders(config, prune_stale=False)
+
+    def _refresh_discovered_vms_from_folders(self, config):
+        """Re-discover VMs from folders and prune stale discovered entries."""
+        return self._sync_discovered_vms_from_folders(config, prune_stale=True)
+
+    def _sync_discovered_vms_from_folders(self, config, prune_stale=False):
+        """Synchronize discovered VMs from configured datacenter folders with the current config."""
         folder_configs = config.get('datacenter_folders', [])
         if not folder_configs:
-            return
+            if prune_stale:
+                self._prune_stale_discovered_vms(config, set())
+            return set()
         
         # Collect manually configured VM names to avoid duplicates
-        manual_vm_names = {vm['name'] for vm in config.get('vms', [])}
+        manual_vm_names = {vm['name'] for vm in config.get('vms', []) if isinstance(vm, dict) and 'name' in vm}
         
         # Initialize if needed
         if 'vms' not in config:
@@ -249,8 +277,9 @@ class RedfishServer:
         
         if not vmware_host or not vmware_user or not vmware_password:
             logger.warning("⚠️  Cannot auto-discover VMs from folders: VMware credentials not available")
-            return
+            return set()
         
+        discovered_vm_names = set()
         discovered_count = 0
         
         for folder_config in folder_configs:
@@ -281,6 +310,7 @@ class RedfishServer:
                 # Add discovered VMs to config (avoid duplicates)
                 for vm_info in discovered_vms:
                     vm_name = vm_info['name']
+                    discovered_vm_names.add(vm_name)
                     
                     if vm_name in manual_vm_names:
                         logger.debug(f"  ℹ️  VM '{vm_name}' already manually configured, skipping")
@@ -308,6 +338,27 @@ class RedfishServer:
             except Exception as e:
                 logger.error(f"❌ Failed to discover VMs in {datacenter}/{folder_path}: {e}")
                 logger.debug(f"📍 Discovery error details:", exc_info=True)
+
+        if prune_stale:
+            self._prune_stale_discovered_vms(config, discovered_vm_names)
+
+        return discovered_vm_names
+
+    def _prune_stale_discovered_vms(self, config, active_discovered_vm_names):
+        """Remove discovered VM entries that are no longer present in the folder discovery set."""
+        active_names = set(active_discovered_vm_names or [])
+        if 'vms' not in config:
+            config['vms'] = []
+
+        pruned_vms = []
+        for vm in config.get('vms', []):
+            if isinstance(vm, dict) and vm.get('discovered') and vm.get('name') not in active_names:
+                logger.info(f"🗑️ Pruning stale discovered VM: {vm.get('name')}")
+                continue
+            pruned_vms.append(vm)
+
+        config['vms'] = pruned_vms
+        return config['vms']
     
     def start(self):
         """Start all Redfish servers with enhanced monitoring"""
@@ -321,6 +372,7 @@ class RedfishServer:
                 # Create a single Redfish handler for all VMs
                 vm_configs = self.config.get('vms', [])
                 redfish_handler = RedfishHandler(vm_configs, self.config)
+                self.redfish_handler = redfish_handler
                 
                 # Start a single server for all VMs (use {ID} in URI to select VM)
                 self._start_single_server(vm_configs, redfish_handler)
@@ -333,6 +385,7 @@ class RedfishServer:
                     
                     # Start health reporting thread
                     self._start_health_reporter()
+                    self._start_folder_refresh_monitor()
                     
                     # Keep main thread alive
                     self._main_loop()
@@ -391,6 +444,29 @@ class RedfishServer:
         health_thread = threading.Thread(target=health_reporter, daemon=True, name="HealthReporter")
         health_thread.start()
         logger.info("📊 Health reporter started (5-minute intervals)")
+
+    def _start_folder_refresh_monitor(self):
+        """Start a background thread that periodically refreshes discovered VMs from datacenter folders."""
+        if not self.config.get('datacenter_folders'):
+            return
+
+        refresh_interval = self._get_datacenter_folder_refresh_interval_seconds()
+
+        def folder_refresh_loop():
+            while self.running:
+                try:
+                    time.sleep(refresh_interval)
+                    if self.running:
+                        logger.info("🔄 Refreshing discovered VMs from datacenter folders")
+                        self._refresh_discovered_vms_from_folders(self.config)
+                        if self.redfish_handler:
+                            self.redfish_handler.refresh_vm_configs(self.config.get('vms', []), self.config)
+                except Exception as e:
+                    logger.warning(f"⚠️  Datacenter folder refresh error: {e}")
+
+        refresh_thread = threading.Thread(target=folder_refresh_loop, daemon=True, name="FolderRefreshMonitor")
+        refresh_thread.start()
+        logger.info(f"📅 Datacenter folder refresh monitor started (interval {refresh_interval}s)")
     
     def _main_loop(self):
         """Main server loop with enhanced signal handling"""

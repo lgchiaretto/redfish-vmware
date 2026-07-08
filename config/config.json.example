@@ -11,6 +11,7 @@
     "key_path": "/etc/letsencrypt/live/your-host.example.com/privkey.pem"
   },
   "redfish_port": 8443,
+  "datacenter_folder_refresh_interval_seconds": 300,
   "disable_ssl": true,
   "vms": [
     {

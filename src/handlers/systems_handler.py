@@ -36,6 +36,14 @@ class SystemsHandler:
                     self._handle_bios_get(request_handler, vm_name, path)
                 elif '/Storage' in path:
                     self._handle_storage_get(request_handler, vm_name, path)
+                elif '/Processors' in path:
+                    self._handle_processors_get(request_handler, vm_name, path)
+                elif '/Memory' in path:
+                    self._handle_memory_get(request_handler, vm_name, path)
+                elif '/NetworkInterfaces' in path:
+                    self._handle_network_interfaces_get(request_handler, vm_name, path)
+                elif '/EthernetInterfaces' in path:
+                    self._handle_ethernet_interfaces_get(request_handler, vm_name, path)
                 elif '/SecureBoot' in path:
                     self._handle_secure_boot_get(request_handler, vm_name, path)
                 else:
@@ -80,37 +88,51 @@ class SystemsHandler:
         return None
     
     def _get_system_info(self, vm_name: str) -> Dict:
-        """Get system information for a VM"""
+        """Get a Redfish ComputerSystem payload for a VM."""
         try:
-            # Get VM power state
             vmware_client = self.vmware_clients.get(vm_name)
+            vm_info = {}
+            power_state = 'Off'
+
             if vmware_client:
-                vm_info = vmware_client.get_vm_info(vm_name)
+                try:
+                    vm_info = vmware_client.get_vm_info(vm_name) or {}
+                except Exception as client_error:
+                    logger.warning(f"⚠️  Unable to retrieve VMware info for {vm_name}: {client_error}")
+
+            if vm_info:
                 power_state = RedfishModels.get_power_state_mapping().get(
                     vm_info.get('power_state', 'poweredOff'), 'Off'
                 )
-            else:
-                power_state = 'Off'
-            
+
+            cpu_count = vm_info.get('cpu_count', 0) or 0
+            memory_mb = vm_info.get('memory_mb', 0) or 0
+            memory_gib = max(1, int(round(memory_mb / 1024))) if memory_mb else 0
+            guest_hostname = vm_info.get('guest_hostname') or vm_info.get('guest_ip') or f'{vm_name}.local'
+            uuid = vm_info.get('uuid') or vm_info.get('instance_uuid') or f'00000000-0000-0000-0000-{vm_name[-12:].ljust(12, "0")}'
+
             return {
                 '@odata.type': '#ComputerSystem.v1_13_0.ComputerSystem',
                 '@odata.id': f'/redfish/v1/Systems/{vm_name}',
                 'Id': vm_name,
-                'Name': f'System {vm_name}',
-                'Description': f'VMware VM {vm_name}',
+                'Name': vm_name,
+                'Description': f'VMware virtual machine {vm_name}',
+                'SystemType': 'Virtual',
+                'AssetTag': 'VMware-Bridge',
+                'IndicatorLED': 'Off',
                 'Status': {
                     'State': 'Enabled',
                     'Health': 'OK'
                 },
                 'PowerState': power_state,
-                'BiosVersion': '2.0.0',
+                'BiosVersion': 'Virtual BIOS',
                 'Manufacturer': 'VMware',
                 'Model': 'Virtual Machine',
                 'SKU': 'VMware VM',
                 'SerialNumber': f'VMware-{vm_name}',
                 'PartNumber': 'VMware-System',
-                'UUID': f'424d4f4e-{vm_name[-8:].ljust(8, "0")}-{vm_name[-4:].ljust(4, "0")}-{vm_name[-4:].ljust(4, "0")}-{vm_name[-12:].ljust(12, "0")}',
-                'HostName': f'{vm_name}.local',
+                'UUID': uuid,
+                'HostName': guest_hostname,
                 'Boot': {
                     'BootSourceOverrideEnabled': 'Disabled',
                     'BootSourceOverrideTarget': 'None',
@@ -127,6 +149,50 @@ class SystemsHandler:
                 'Storage': {
                     '@odata.id': f'/redfish/v1/Systems/{vm_name}/Storage'
                 },
+                'EthernetInterfaces': {
+                    '@odata.id': f'/redfish/v1/Systems/{vm_name}/EthernetInterfaces'
+                },
+                'Processors': {
+                    '@odata.id': f'/redfish/v1/Systems/{vm_name}/Processors'
+                },
+                'Memory': {
+                    '@odata.id': f'/redfish/v1/Systems/{vm_name}/Memory'
+                },
+                'NetworkInterfaces': {
+                    '@odata.id': f'/redfish/v1/Systems/{vm_name}/NetworkInterfaces'
+                },
+                'ProcessorSummary': {
+                    'Count': cpu_count,
+                    'Model': 'Virtual CPU',
+                    'Status': {
+                        'State': 'Enabled',
+                        'Health': 'OK'
+                    }
+                },
+                'MemorySummary': {
+                    'TotalSystemMemoryGiB': memory_gib,
+                    'Status': {
+                        'State': 'Enabled',
+                        'Health': 'OK'
+                    }
+                },
+                'MemoryDomains': [
+                    {
+                        'Name': 'System Memory',
+                        'MemoryType': 'DRAM',
+                        'CapacityMiB': max(1024, memory_mb)
+                    }
+                ],
+                'TrustedModules': [
+                    {
+                        'FirmwareVersion': '1.0.0',
+                        'InterfaceType': 'TPM1_2',
+                        'Status': {
+                            'State': 'Enabled',
+                            'Health': 'OK'
+                        }
+                    }
+                ],
                 'Actions': {
                     '#ComputerSystem.Reset': {
                         'target': f'/redfish/v1/Systems/{vm_name}/Actions/ComputerSystem.Reset',
@@ -145,7 +211,35 @@ class SystemsHandler:
                         {
                             '@odata.id': f'/redfish/v1/Managers/{vm_name}-bmc'
                         }
-                    ]
+                    ],
+                    'Processors': [
+                        {
+                            '@odata.id': f'/redfish/v1/Systems/{vm_name}/Processors'
+                        }
+                    ],
+                    'Memory': [
+                        {
+                            '@odata.id': f'/redfish/v1/Systems/{vm_name}/Memory'
+                        }
+                    ],
+                    'NetworkInterfaces': [
+                        {
+                            '@odata.id': f'/redfish/v1/Systems/{vm_name}/NetworkInterfaces'
+                        }
+                    ],
+                    'EthernetInterfaces': [
+                        {
+                            '@odata.id': f'/redfish/v1/Systems/{vm_name}/EthernetInterfaces'
+                        }
+                    ],
+                    'ComputerSystems': []
+                },
+                'Oem': {
+                    'VMware': {
+                        'VMName': vm_name,
+                        'GuestOS': vm_info.get('guest_os', 'Unknown'),
+                        'ToolsStatus': vm_info.get('tools_status', 'toolsNotInstalled')
+                    }
                 }
             }
         except Exception as e:
@@ -230,6 +324,95 @@ class SystemsHandler:
         else:
             self._send_error_response(request_handler, 404, "Not Found")
     
+    def _handle_processors_get(self, request_handler, vm_name: str, path: str):
+        """Handle Processors GET requests"""
+        self._handle_related_collection_get(
+            request_handler,
+            vm_name,
+            path,
+            'Processors',
+            'Processor',
+            'Processors Collection',
+            'Processor',
+            'CPU Processor',
+        )
+
+    def _handle_memory_get(self, request_handler, vm_name: str, path: str):
+        """Handle Memory GET requests"""
+        self._handle_related_collection_get(
+            request_handler,
+            vm_name,
+            path,
+            'Memory',
+            'Memory',
+            'Memory Collection',
+            'Memory',
+            'System Memory',
+        )
+
+    def _handle_network_interfaces_get(self, request_handler, vm_name: str, path: str):
+        """Handle NetworkInterfaces GET requests"""
+        self._handle_related_collection_get(
+            request_handler,
+            vm_name,
+            path,
+            'NetworkInterfaces',
+            'NetworkInterface',
+            'Network Interfaces Collection',
+            'NetworkInterface',
+            'Virtual Network Interface',
+        )
+
+    def _handle_ethernet_interfaces_get(self, request_handler, vm_name: str, path: str):
+        """Handle EthernetInterfaces GET requests"""
+        self._handle_related_collection_get(
+            request_handler,
+            vm_name,
+            path,
+            'EthernetInterfaces',
+            'EthernetInterface',
+            'Ethernet Interfaces Collection',
+            'EthernetInterface',
+            'Virtual Ethernet Interface',
+        )
+
+    def _handle_related_collection_get(self, request_handler, vm_name: str, path: str, collection_name: str, member_type: str, collection_label: str, member_schema: str, member_description: str):
+        """Serve Redfish collection and member resources for related system subpaths."""
+        if path.endswith(f'/{collection_name}'):
+            data = {
+                '@odata.type': '#Collection.Collection',
+                '@odata.id': f'/redfish/v1/Systems/{vm_name}/{collection_name}',
+                'Id': collection_name,
+                'Name': f'{collection_name} Collection',
+                'Description': f'{collection_name} collection for {vm_name}',
+                'Members@odata.count': 1,
+                'Members': [
+                    {
+                        '@odata.id': f'/redfish/v1/Systems/{vm_name}/{collection_name}/1'
+                    }
+                ]
+            }
+            self._send_json_response(request_handler, 200, data)
+            return
+
+        if '/' in path and path.split('/')[-1].isdigit():
+            member_id = path.split('/')[-1]
+            data = {
+                '@odata.type': f'#{member_schema}.v1_0_0.{member_schema}',
+                '@odata.id': path,
+                'Id': member_id,
+                'Name': f'{member_type} {member_id}',
+                'Description': f'{member_description} {member_id} for {vm_name}',
+                'Status': {
+                    'State': 'Enabled',
+                    'Health': 'OK'
+                }
+            }
+            self._send_json_response(request_handler, 200, data)
+            return
+
+        self._send_error_response(request_handler, 404, "Not Found")
+
     def _handle_secure_boot_get(self, request_handler, vm_name: str, path: str):
         """Handle SecureBoot GET requests"""
         if path.endswith('/SecureBoot'):

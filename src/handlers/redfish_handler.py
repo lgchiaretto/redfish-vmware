@@ -57,6 +57,42 @@ class RedfishHandler:
                 logger.error(f"❌ Failed to initialize VMware client for {vm_name}: {e}")
         
         logger.info(f"🚀 Redfish handler initialized for {len(self.vm_configs)} VMs")
+
+    def refresh_vm_configs(self, vm_configs, config=None):
+        """Refresh the handler's VM registry and VMware clients after dynamic discovery updates."""
+        self.config = config or self.config
+        refreshed_vm_configs = [vm for vm in vm_configs if isinstance(vm, dict) and 'name' in vm]
+        self.vm_configs = {vm['name']: vm for vm in refreshed_vm_configs}
+
+        self.systems_handler.vm_configs = self.vm_configs
+        self.managers_handler.vm_configs = self.vm_configs
+        self.chassis_handler.vm_configs = self.vm_configs
+        self.update_service_handler.vm_configs = self.vm_configs
+
+        for vm_name, vm_config in self.vm_configs.items():
+            if vm_name in self.vmware_clients:
+                continue
+            try:
+                self.vmware_clients[vm_name] = VMwareClient(
+                    vm_config['vcenter_host'],
+                    vm_config['vcenter_user'],
+                    vm_config['vcenter_password'],
+                    disable_ssl=vm_config.get('disable_ssl', True)
+                )
+                logger.info(f"✅ VMware client initialized for VM: {vm_name}")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize VMware client for {vm_name}: {e}")
+
+        for stale_vm_name in list(self.vmware_clients.keys()):
+            if stale_vm_name not in self.vm_configs:
+                self.vmware_clients.pop(stale_vm_name, None)
+
+        self.systems_handler.vmware_clients = self.vmware_clients
+        self.managers_handler.vmware_clients = self.vmware_clients
+        self.chassis_handler.vmware_clients = self.vmware_clients
+        self.update_service_handler.vmware_clients = self.vmware_clients
+
+        logger.info(f"🔄 Refreshed Redfish handler for {len(self.vm_configs)} VMs")
     
     def handle_get_request(self, request_handler):
         """Handle GET requests with enhanced Metal3/Ironic logging"""
