@@ -7,13 +7,13 @@ This is a **Redfish-to-VMware vSphere bridge** that translates standard Redfish 
 
 ## Architecture Deep Dive
 
-### Multi-Server Design Pattern
-- **One Redfish server instance per VM** - Each VM gets its own dedicated HTTPS/HTTP endpoint
-- Server instances run on different ports (8440-8444+) defined in `config/config.json`
-- All servers share a single `RedfishHandler` instance to coordinate operations
-- This design allows Metal3 to treat each VM as an independent bare metal host
+### Single-Server Design Pattern
+- **One Redfish server instance for all VMs** - A single HTTP(S) listener serves all Redfish endpoints.
+- The server listens on a top-level `redfish_port` configured in `config/config.json` (or via `REDFISH_PORT` environment variable in the service unit).
+- VM selection is done using the `{ID}` portion of the Redfish URI: `/redfish/v1/Systems/{ID}`.
+- This simplifies deployment and avoids per-VM port management; clients address different VMs by changing the `{ID}` path segment.
 
-**Example**: `skinner-master-1` runs on port 8441, accessible at `http://bastion.chiaret.to:8441/redfish/v1/Systems/skinner-master-1`
+**Example**: The server listens on port 8443; `skinner-master-1` is accessible at `http://bastion.chiaret.to:8443/redfish/v1/Systems/skinner-master-1`
 
 ### Handler-Based Modular Architecture
 Located in `src/handlers/`, each handler is specialized:
@@ -55,15 +55,57 @@ Metal3 requires asynchronous operation tracking. `src/tasks/manager.py` provides
       "vcenter_host": "...",
       "vcenter_user": "...",
       "vcenter_password": "...",
-      "redfish_port": 8443,           // Unique port per VM
       "redfish_user": "admin",        // Fixed: admin/password
       "redfish_password": "password",
-      "disable_ssl": true             // HTTP vs HTTPS toggle
+      "discovered": false,            // Auto-populated if from datacenter_folders
+      "discovered_from": "..."        // Path if auto-discovered
     }
   ],
+  "datacenter_folders": [
+    {
+      "datacenter": "Datacenter1",    // vCenter datacenter name
+      "folder_path": "vm/prod/kubernetes"  // Folder path for VM discovery
+    }
+  ],
+  "redfish_port": 8443,               // Top-level port for single server
+  "disable_ssl": true,                // Top-level SSL toggle
   "ssl": {  /* Optional: Let's Encrypt cert paths */ }
 }
 ```
+
+### VM Auto-Discovery from Datacenter Folders
+**NEW FEATURE**: Automatically discover and manage VMs from vCenter datacenter folders.
+
+**Discovery Flow**:
+1. Configuration loaded from `config/config.json`
+2. `_validate_config()` checks for `vms` or `datacenter_folders` (or both)
+3. `_discover_vms_from_folders()` called after validation:
+   - Iterates through each `datacenter_folders` entry
+   - Creates temporary VMware connection using global `vmware` credentials
+   - Calls `vm_operations.list_vms_in_folder(datacenter, folder_path)`
+   - Recursively discovers VMs in folder hierarchy
+   - Skips VMs already in manual `vms` list (name match)
+   - Adds discovered VMs with `"discovered": true` and `"discovered_from"` metadata
+4. Final config has merged list of manual + discovered VMs
+
+**Implementation Details**:
+- `VMOperations.list_vms_in_folder()` - Finds folder by datacenter + path, recursively collects VMs
+- `VMOperations.get_folder_by_path()` - Navigates folder hierarchy (e.g., `vm/prod/k8s`)
+- `VMOperations._collect_vms_recursive()` - Traverses folder tree, adds vim.VirtualMachine objects
+- `VMOperations.list_datacenters()` - Lists available datacenters for validation
+- Discovered VMs get default credentials: `redfish_user=admin`, `redfish_password=password`
+
+**Folder Path Format**:
+- `vm` - All VMs in datacenter root folder
+- `vm/prod` - VMs in `prod` subfolder  
+- `vm/prod/kubernetes` - Nested folder search (recursive)
+- Path is case-sensitive and must match vCenter folder names exactly
+
+**Error Handling**:
+- Invalid datacenter/folder logs warning and skips that entry
+- Missing VMware credentials falls back to manual VMs only
+- No exception thrown - discovery failures are non-blocking
+- Temporary connection properly disconnected after each discovery
 
 ### SystemD Service Pattern
 Production deployment uses `config/redfish-vmware-server.service`:
@@ -72,7 +114,7 @@ Production deployment uses `config/redfish-vmware-server.service`:
 - Logs to journald: `sudo journalctl -u redfish-vmware-server -f`
 - Debug control via environment: `Environment=REDFISH_DEBUG=true` in service override
 
-**Critical**: Use `setup.sh` for installation - it configures Python env, systemd, firewall, and validates VMware connectivity.
+**Critical**: Use `setup.sh` for installation - it configures Python env, systemd, firewall, and validates VMware connectivity. Ensure `config/config.json` contains a top-level `redfish_port` (or set `REDFISH_PORT` in the systemd unit) so the single Redfish server listens on the expected port.
 
 ## Development Conventions
 

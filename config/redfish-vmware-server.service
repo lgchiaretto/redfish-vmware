@@ -13,6 +13,8 @@ Environment=PYTHONUNBUFFERED=1
 Environment=REDFISH_DEBUG=true
 Environment=REDFISH_PERF_DEBUG=true
 Environment=REDFISH_VMWARE_DEBUG=true
+# Optional: set the Redfish listen port via environment or configure in config/config.json
+Environment=REDFISH_PORT=8443
 Environment=PYTHONPATH=__PROJECT_ROOT__/src
 ExecStart=/usr/bin/python3 __PROJECT_ROOT__/src/redfish_server.py --config __PROJECT_ROOT__/config/config.json
 ExecReload=/bin/kill -HUP $MAINPID

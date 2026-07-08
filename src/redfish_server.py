@@ -17,6 +17,8 @@ import threading
 import time
 from http.server import HTTPServer
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from utils.logging_config import setup_logging, log_performance_metric, create_debug_context
 from handlers.http_handler import RedfishRequestHandler, get_request_statistics
 from handlers.redfish_handler import RedfishHandler
@@ -127,7 +129,8 @@ class RedfishServer:
         
         # Log VM configurations (without sensitive data)
         for vm in self.config.get('vms', []):
-            logger.info(f"🖥️  VM: {vm['name']} - vCenter: {vm['vcenter_host']} - Port: {vm['redfish_port']}")
+            effective_port = self._get_effective_server_port(vm_config=vm)
+            logger.info(f"🖥️  VM: {vm['name']} - vCenter: {vm['vcenter_host']} - Port: {effective_port}")
     
     def _load_config(self):
         """Load and validate configuration with enhanced error reporting"""
@@ -140,6 +143,9 @@ class RedfishServer:
                 
                 # Enhanced validation
                 self._validate_config(config)
+                
+                # Discover and merge VMs from datacenter folders (if configured)
+                self._discover_vms_from_folders(config)
                 
                 return config
                 
@@ -158,22 +164,150 @@ class RedfishServer:
     
     def _validate_config(self, config):
         """Enhanced configuration validation"""
-        if 'vms' not in config or not config['vms']:
-            raise ValueError("No VMs configured - 'vms' section is required")
+        # Allow either 'vms' or 'datacenter_folders' (or both)
+        has_vms = 'vms' in config and config['vms']
+        has_folders = 'datacenter_folders' in config and config['datacenter_folders']
         
-        required_vm_fields = ['name', 'vcenter_host', 'vcenter_user', 'vcenter_password', 'redfish_port']
+        if not has_vms and not has_folders:
+            raise ValueError("Configuration must contain either 'vms' section or 'datacenter_folders' section")
         
-        for i, vm in enumerate(config['vms']):
-            for field in required_vm_fields:
-                if field not in vm:
-                    raise ValueError(f"VM {i+1}: Missing required field '{field}'")
+        required_vm_fields = ['name', 'vcenter_host', 'vcenter_user', 'vcenter_password']
+        
+        # Validate manually configured VMs
+        if has_vms:
+            for i, vm in enumerate(config['vms']):
+                for field in required_vm_fields:
+                    if field not in vm:
+                        raise ValueError(f"VM {i+1}: Missing required field '{field}'")
+        
+        # Validate datacenter_folders configuration
+        if has_folders:
+            for i, folder_config in enumerate(config['datacenter_folders']):
+                if 'datacenter' not in folder_config:
+                    raise ValueError(f"Datacenter folder {i+1}: Missing 'datacenter' field")
+                if 'folder_path' not in folder_config:
+                    raise ValueError(f"Datacenter folder {i+1}: Missing 'folder_path' field")
+        
+        # Top-level server port may be provided instead of per-VM ports
+        server_port = self._get_effective_server_port(config=config)
+        if server_port is not None:
+            if not isinstance(server_port, int) or server_port < 1024 or server_port > 65535:
+                raise ValueError(f"Invalid redfish_port {server_port} (must be 1024-65535)")
+        
+        logger.info(f"✅ Configuration validation passed")
+    
+    def _get_effective_server_port(self, config=None, vm_config=None):
+        """Return the effective Redfish server port from env, config, or VM config."""
+        config = config or self.config
+
+        env_port = os.getenv('REDFISH_PORT')
+        if env_port is not None:
+            try:
+                return int(env_port)
+            except ValueError:
+                logger.warning(f"⚠️  Invalid REDFISH_PORT value '{env_port}', ignoring it")
+
+        if config and config.get('redfish_port') is not None:
+            return config.get('redfish_port')
+
+        if vm_config and vm_config.get('redfish_port') is not None:
+            return vm_config.get('redfish_port')
+
+        return 8443
+
+    def _get_effective_redfish_port(self, config=None, vm_config=None):
+        """Backward-compatible alias for effective port lookup."""
+        return self._get_effective_server_port(config=config, vm_config=vm_config)
+
+    def _discover_vms_from_folders(self, config):
+        """Discover VMs from configured datacenter folders and merge with manual VMs"""
+        folder_configs = config.get('datacenter_folders', [])
+        if not folder_configs:
+            return
+        
+        # Collect manually configured VM names to avoid duplicates
+        manual_vm_names = {vm['name'] for vm in config.get('vms', [])}
+        
+        # Initialize if needed
+        if 'vms' not in config:
+            config['vms'] = []
+        
+        # Get VMware credentials from the first manually configured VM or global config
+        vmware_config = config.get('vmware', {})
+        vmware_host = vmware_config.get('host')
+        vmware_user = vmware_config.get('user')
+        vmware_password = vmware_config.get('password')
+        vmware_port = vmware_config.get('port', 443)
+        disable_ssl_vmware = vmware_config.get('disable_ssl', True)
+        
+        # If no global config, use first VM's credentials
+        if not vmware_host and config['vms']:
+            first_vm = config['vms'][0]
+            vmware_host = first_vm.get('vcenter_host')
+            vmware_user = first_vm.get('vcenter_user')
+            vmware_password = first_vm.get('vcenter_password')
+        
+        if not vmware_host or not vmware_user or not vmware_password:
+            logger.warning("⚠️  Cannot auto-discover VMs from folders: VMware credentials not available")
+            return
+        
+        discovered_count = 0
+        
+        for folder_config in folder_configs:
+            datacenter = folder_config['datacenter']
+            folder_path = folder_config['folder_path']
             
-            # Validate port ranges
-            port = vm.get('redfish_port')
-            if not isinstance(port, int) or port < 1024 or port > 65535:
-                raise ValueError(f"VM {vm['name']}: Invalid port {port} (must be 1024-65535)")
-        
-        logger.info(f"✅ Configuration validation passed for {len(config['vms'])} VMs")
+            try:
+                logger.info(f"🔍 Discovering VMs in {datacenter}/{folder_path}...")
+                
+                # Import here to avoid circular dependencies
+                from vmware.connection import VMwareConnection
+                from vmware.vm_operations import VMOperations
+                
+                # Create temporary connection for discovery
+                connection = VMwareConnection(
+                    vmware_host, 
+                    vmware_user, 
+                    vmware_password,
+                    vmware_port,
+                    disable_ssl_vmware
+                )
+                
+                vm_ops = VMOperations(connection)
+                discovered_vms = vm_ops.list_vms_in_folder(datacenter, folder_path)
+                
+                connection.disconnect()
+                
+                # Add discovered VMs to config (avoid duplicates)
+                for vm_info in discovered_vms:
+                    vm_name = vm_info['name']
+                    
+                    if vm_name in manual_vm_names:
+                        logger.debug(f"  ℹ️  VM '{vm_name}' already manually configured, skipping")
+                        continue
+                    
+                    # Create VM configuration entry
+                    vm_config = {
+                        'name': vm_name,
+                        'vcenter_host': vmware_host,
+                        'vcenter_user': vmware_user,
+                        'vcenter_password': vmware_password,
+                        'redfish_user': 'admin',  # Default credentials
+                        'redfish_password': 'password',
+                        'discovered': True,
+                        'discovered_from': f"{datacenter}/{folder_path}"
+                    }
+                    
+                    config['vms'].append(vm_config)
+                    manual_vm_names.add(vm_name)
+                    discovered_count += 1
+                    logger.info(f"  ✅ Added discovered VM: {vm_name}")
+                
+                logger.info(f"📊 Discovered {discovered_count} new VMs from {datacenter}/{folder_path}")
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to discover VMs in {datacenter}/{folder_path}: {e}")
+                logger.debug(f"📍 Discovery error details:", exc_info=True)
     
     def start(self):
         """Start all Redfish servers with enhanced monitoring"""
@@ -188,12 +322,11 @@ class RedfishServer:
                 vm_configs = self.config.get('vms', [])
                 redfish_handler = RedfishHandler(vm_configs, self.config)
                 
-                # Start a server for each VM
-                for vm_config in vm_configs:
-                    self._start_vm_server(vm_config, redfish_handler)
-                
+                # Start a single server for all VMs (use {ID} in URI to select VM)
+                self._start_single_server(vm_configs, redfish_handler)
+
                 if self.servers:
-                    logger.info(f"🎯 All Redfish servers started successfully ({len(self.servers)} servers)")
+                    logger.info(f"🎯 Redfish server started successfully on port {self.servers[0][3]}")
                     logger.info("🔍 Enhanced Metal3/Ironic compatibility enabled")
                     logger.info("🔄 UpdateService, TaskService, and FirmwareInventory endpoints active")
                     logger.info("📊 Health monitoring available at /redfish/v1/health")
@@ -214,43 +347,8 @@ class RedfishServer:
             raise
     
     def _start_vm_server(self, vm_config, redfish_handler):
-        """Start a server for a specific VM with enhanced error handling"""
-        vm_name = vm_config['name']
-        port = vm_config.get('redfish_port', 8443)
-        disable_ssl = vm_config.get('disable_ssl', False)
-        
-        try:
-            logger.info(f"🚀 Starting Redfish server for {vm_name} on port {port}")
-            
-            # Create server
-            server = RedfishHTTPServer(
-                ('0.0.0.0', port),
-                RedfishRequestHandler,
-                redfish_handler
-            )
-            
-            # Setup SSL if not disabled
-            if not disable_ssl:
-                self._setup_ssl(server, vm_name, port)
-            else:
-                logger.info(f"📄 HTTP mode enabled for {vm_name} (SSL disabled in config)")
-                logger.info(f"💡 Client should connect to: http://bastion.chiaret.to:{port}/redfish/v1/")
-                logger.warning(f"⚠️  HTTPS connections will FAIL - use HTTP only for {vm_name}")
-            
-            # Start server in thread
-            server_thread = threading.Thread(
-                target=server.serve_forever,
-                daemon=True,
-                name=f"RedfishServer-{vm_name}-{port}"
-            )
-            server_thread.start()
-            
-            self.servers.append((server, server_thread, vm_name, port))
-            logger.info(f"✅ Redfish server started for {vm_name} on port {port}")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to start Redfish server for {vm_name} on port {port}: {e}")
-            logger.debug(f"📍 Server startup error for {vm_name}:", exc_info=True)
+        """(deprecated) Per-VM server startup is no longer used."""
+        logger.warning("_start_vm_server called but per-VM servers are deprecated")
     
     def _setup_ssl(self, server, vm_name, port):
         """Setup SSL configuration for a server"""
@@ -317,14 +415,15 @@ class RedfishServer:
         self.running = False
         
         with create_debug_context()('Server Shutdown'):
-            for server, thread, vm_name, port in self.servers:
+            for server_info in self.servers:
                 try:
-                    logger.info(f"🛑 Stopping server for {vm_name} on port {port}")
+                    server, thread, name, port = server_info
+                    logger.info(f"🛑 Stopping server on port {port}")
                     server.shutdown()
                     server.server_close()
-                    logger.info(f"✅ Server stopped for {vm_name}")
+                    logger.info(f"✅ Server stopped on port {port}")
                 except Exception as e:
-                    logger.error(f"❌ Error stopping server for {vm_name}: {e}")
+                    logger.error(f"❌ Error stopping server: {e}")
             
             # Log final statistics
             final_stats = self.health_monitor.get_health_stats()
@@ -335,6 +434,53 @@ class RedfishServer:
             
             self.servers.clear()
             logger.info("✅ All servers stopped successfully")
+
+    def _start_single_server(self, vm_configs, redfish_handler):
+        """Start a single HTTP(S) server that handles all VMs based on the {ID} in the URI"""
+        # Determine server port
+        port = self._get_effective_server_port(vm_config=vm_configs[0] if vm_configs else None)
+
+        # Determine SSL setting: prefer top-level, else derive from VM configs
+        if 'disable_ssl' in self.config:
+            disable_ssl = self.config.get('disable_ssl', True)
+        else:
+            vm_ssl_set = {bool(vm.get('disable_ssl', False)) for vm in vm_configs}
+            if len(vm_ssl_set) > 1:
+                logger.warning("🔀 Conflicting per-VM 'disable_ssl' values; defaulting to HTTP (disable_ssl=True)")
+                disable_ssl = True
+            else:
+                disable_ssl = vm_ssl_set.pop() if vm_ssl_set else True
+
+        try:
+            logger.info(f"🚀 Starting single Redfish server on port {port} (SSL disabled={disable_ssl})")
+
+            server = RedfishHTTPServer(
+                ('0.0.0.0', port),
+                RedfishRequestHandler,
+                redfish_handler
+            )
+
+            if not disable_ssl:
+                # Use a generic server name for SSL messages
+                self._setup_ssl(server, 'redfish-server', port)
+            else:
+                logger.info(f"📄 HTTP mode enabled for server (SSL disabled)")
+                logger.info(f"💡 Client should connect to: http://bastion.chiaret.to:{port}/redfish/v1/")
+
+            server_thread = threading.Thread(
+                target=server.serve_forever,
+                daemon=True,
+                name=f"RedfishServer-main-{port}"
+            )
+            server_thread.start()
+
+            # Store tuple: (server, thread, name, port)
+            self.servers.append((server, server_thread, 'redfish-server', port))
+            logger.info(f"✅ Single Redfish server started on port {port}")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to start single Redfish server on port {port}: {e}")
+            logger.debug(f"📍 Server startup error:", exc_info=True)
     
     def get_server_health(self):
         """Get current server health statistics"""

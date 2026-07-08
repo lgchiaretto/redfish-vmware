@@ -273,13 +273,17 @@ EOF
 setup_firewall() {
     print_info "Setting up firewall rules..."
     
-    # Extract ports from config
+    # Extract ports from config (prefer top-level 'redfish_port')
     local config_file="$PROJECT_ROOT/config/config.json"
     local ports=$(python3 -c "
 import json
 config = json.load(open('$config_file'))
-ports = [str(vm.get('redfish_port', 8443)) for vm in config['vms']]
-print(' '.join(ports))
+server_port = config.get('redfish_port')
+if server_port:
+    print(str(server_port))
+else:
+    ports = [str(vm.get('redfish_port', 8443)) for vm in config.get('vms', [])]
+    print(' '.join(ports))
 " 2>/dev/null)
     
     if [[ -z "$ports" ]]; then
@@ -367,7 +371,10 @@ start_and_test_service() {
     local first_port=$(python3 -c "
 import json
 config = json.load(open('$config_file'))
-if config['vms']:
+server_port = config.get('redfish_port')
+if server_port:
+    print(server_port)
+elif config.get('vms'):
     print(config['vms'][0].get('redfish_port', 8443))
 else:
     print(8443)
@@ -399,7 +406,11 @@ show_usage_examples() {
     local vm_info=$(python3 -c "
 import json
 config = json.load(open('$config_file'))
-if config['vms']:
+server_port = config.get('redfish_port')
+if server_port and config.get('vms'):
+    vm = config['vms'][0]
+    print(f\"{vm['name']}:{server_port}\")
+elif config.get('vms'):
     vm = config['vms'][0]
     print(f\"{vm['name']}:{vm.get('redfish_port', 8443)}\")
 else:

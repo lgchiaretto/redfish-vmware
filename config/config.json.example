@@ -10,36 +10,43 @@
     "cert_path": "/etc/letsencrypt/live/your-host.example.com/fullchain.pem",
     "key_path": "/etc/letsencrypt/live/your-host.example.com/privkey.pem"
   },
+  "redfish_port": 8443,
+  "disable_ssl": true,
   "vms": [
     {
       "name": "vm-master-0",
       "vcenter_host": "vcenter.example.com",
       "vcenter_user": "administrator@vsphere.local",
       "vcenter_password": "your-password-here",
-      "redfish_port": 8443,
       "redfish_user": "admin",
-      "redfish_password": "password",
-      "disable_ssl": true
+      "redfish_password": "password"
     },
     {
       "name": "vm-master-1",
       "vcenter_host": "vcenter.example.com", 
       "vcenter_user": "administrator@vsphere.local",
       "vcenter_password": "your-password-here",
-      "redfish_port": 8444,
       "redfish_user": "admin",
-      "redfish_password": "password",
-      "disable_ssl": true
+      "redfish_password": "password"
     },
     {
       "name": "vm-worker-0",
       "vcenter_host": "vcenter.example.com",
       "vcenter_user": "administrator@vsphere.local",
       "vcenter_password": "your-password-here",
-      "redfish_port": 8445,
       "redfish_user": "admin",
-      "redfish_password": "password",
-      "disable_ssl": true
+      "redfish_password": "password"
+    }
+  ],
+  "datacenter_folders": [
+    {
+      "datacenter": "Datacenter1",
+      "folder_path": "vm/prod/kubernetes"
+    },
+    {
+      "datacenter": "Datacenter1",
+      "folder_path": "vm/staging"
     }
   ]
 }
+

@@ -130,7 +130,7 @@ sudo ./setup.sh
 
 ### 1. Configure VMs in vCenter
 
-Edit `config/config.json`:
+Edit `config/config.json`. The server listens on a single port and uses the `{ID}` in the path to select VMs:
 
 ```json
 {
@@ -141,20 +141,84 @@ Edit `config/config.json`:
     "port": 443,
     "disable_ssl": true
   },
+  "redfish_port": 8443,
+  "disable_ssl": true,
   "vms": [
     {
       "name": "worker-vm-1",
       "vcenter_host": "your-vcenter.domain.com",
       "vcenter_user": "administrator@vsphere.local",
       "vcenter_password": "your-password",
-      "redfish_port": 8443,
       "redfish_user": "admin",
-      "redfish_password": "password",
-      "disable_ssl": true
+      "redfish_password": "password"
+    },
+    {
+      "name": "worker-vm-2",
+      "vcenter_host": "your-vcenter.domain.com",
+      "vcenter_user": "administrator@vsphere.local",
+      "vcenter_password": "your-password",
+      "redfish_user": "admin",
+      "redfish_password": "password"
     }
   ]
 }
 ```
+
+**Key differences from multi-server setup:**
+- Single `redfish_port` at the top level (all VMs on same port)
+- Top-level `disable_ssl` flag applies to the single server
+- VM selection via URL path: `/redfish/v1/Systems/{vm_name}` where `{vm_name}` is from the config
+
+### 1b. Auto-discover VMs from vCenter Folders (Optional)
+
+You can automatically discover and manage all VMs in specific vCenter datacenter folders by adding a `datacenter_folders` section:
+
+```json
+{
+  "vmware": {
+    "host": "your-vcenter.domain.com",
+    "user": "administrator@vsphere.local", 
+    "password": "your-password",
+    "port": 443,
+    "disable_ssl": true
+  },
+  "redfish_port": 8443,
+  "disable_ssl": true,
+  "vms": [
+    {
+      "name": "manually-configured-vm",
+      "vcenter_host": "your-vcenter.domain.com",
+      "vcenter_user": "administrator@vsphere.local",
+      "vcenter_password": "your-password",
+      "redfish_user": "admin",
+      "redfish_password": "password"
+    }
+  ],
+  "datacenter_folders": [
+    {
+      "datacenter": "Datacenter1",
+      "folder_path": "vm/prod/kubernetes"
+    },
+    {
+      "datacenter": "Datacenter1",
+      "folder_path": "vm/staging"
+    }
+  ]
+}
+```
+
+**Features:**
+- ✅ Automatically discovers all VMs in specified folders (recursive)
+- ✅ Skips VMs already manually configured (no duplicates)
+- ✅ Uses global vCenter credentials from `vmware` section
+- ✅ Marks discovered VMs in logs with `discovered=true` and folder source
+- ✅ Mix manual and auto-discovered VMs in the same deployment
+- ✅ All discovered VMs get default Redfish credentials (`admin:password`)
+
+**Folder Path Format:**
+- `vm` - All VMs in the datacenter root folder
+- `vm/prod` - VMs in the `prod` subfolder
+- `vm/prod/kubernetes` - VMs in nested folders (recursive search)
 
 ### 2. Run Setup
 
@@ -182,29 +246,40 @@ The Redfish server uses HTTP Basic authentication:
 
 ## ✨ Basic Usage
 
-### Public Endpoints
+### Public Endpoints (no authentication)
 ```bash
 # Service Root
-curl -k https://localhost:8443/redfish/v1/
+curl http://localhost:8443/redfish/v1/
 
-# Systems Collection
-curl -k https://localhost:8443/redfish/v1/Systems
+# Systems Collection (all VMs)
+curl http://localhost:8443/redfish/v1/Systems
 ```
 
-### Authenticated Endpoints
+### Authenticated Endpoints (HTTP Basic: admin:password)
 ```bash
-# System Information
-curl -k -u admin:password https://localhost:8443/redfish/v1/Systems/worker-vm-1
+# System Information (select VM by name in URL)
+curl -u admin:password http://localhost:8443/redfish/v1/Systems/worker-vm-1
 
 # Power On System
-curl -k -u admin:password -X POST -H "Content-Type: application/json" \
+curl -u admin:password -X POST -H "Content-Type: application/json" \
      -d '{"ResetType": "On"}' \
-     https://localhost:8443/redfish/v1/Systems/worker-vm-1/Actions/ComputerSystem.Reset
+     http://localhost:8443/redfish/v1/Systems/worker-vm-1/Actions/ComputerSystem.Reset
 
 # Power Off System
-curl -k -u admin:password -X POST -H "Content-Type: application/json" \
+curl -u admin:password -X POST -H "Content-Type: application/json" \
      -d '{"ResetType": "ForceOff"}' \
-     https://localhost:8443/redfish/v1/Systems/worker-vm-1/Actions/ComputerSystem.Reset
+     http://localhost:8443/redfish/v1/Systems/worker-vm-1/Actions/ComputerSystem.Reset
+
+# Boot Configuration (ISO boot for deployment)
+curl -u admin:password -X PATCH -H "Content-Type: application/json" \
+     -d '{"Boot": {"BootSourceOverrideTarget": "Cd", "BootSourceOverrideEnabled": "Once"}}' \
+     http://localhost:8443/redfish/v1/Systems/worker-vm-1
+```
+
+### For HTTPS (when certificates are configured)
+```bash
+# Add -k flag to ignore self-signed certificates during testing
+curl -k https://localhost:8443/redfish/v1/
 ```
 
 ### Service Control

@@ -121,8 +121,12 @@ remove_firewall_rules() {
 import json
 try:
     config = json.load(open('$config_file'))
-    ports = [str(vm.get('redfish_port', 8443)) for vm in config['vms']]
-    print(' '.join(ports))
+    server_port = config.get('redfish_port')
+    if server_port:
+        print(str(server_port))
+    else:
+        ports = [str(vm.get('redfish_port', 8443)) for vm in config.get('vms', [])]
+        print(' '.join(ports))
 except:
     print('8443 8444')
 " 2>/dev/null)

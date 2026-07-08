@@ -136,3 +136,148 @@ class VMOperations:
         except Exception as e:
             logger.error(f"Error getting power state for '{vm_name}': {e}")
             return None
+
+    def get_folder_by_path(self, datacenter_name, folder_path):
+        """
+        Find a folder by datacenter and path
+        
+        Args:
+            datacenter_name: Name of the datacenter
+            folder_path: Path to folder (e.g., 'vm' or 'vm/prod/kubernetes')
+            
+        Returns:
+            Folder object or None if not found
+        """
+        try:
+            # Find datacenter
+            datacenter = self._get_datacenter(datacenter_name)
+            if not datacenter:
+                logger.warning(f"Datacenter '{datacenter_name}' not found")
+                return None
+            
+            # Start from the VM folder
+            current_folder = datacenter.vmFolder
+            
+            # Navigate through folder hierarchy
+            for folder_name in folder_path.strip('/').split('/'):
+                if not folder_name:
+                    continue
+                    
+                found = False
+                if hasattr(current_folder, 'childEntity'):
+                    for entity in current_folder.childEntity:
+                        if isinstance(entity, vim.Folder) and entity.name == folder_name:
+                            current_folder = entity
+                            found = True
+                            break
+                
+                if not found:
+                    logger.warning(f"Folder '{folder_path}' not found in datacenter '{datacenter_name}'")
+                    return None
+            
+            return current_folder
+            
+        except Exception as e:
+            logger.error(f"Error finding folder '{folder_path}' in datacenter '{datacenter_name}': {e}")
+            return None
+
+    def _get_datacenter(self, datacenter_name):
+        """
+        Find a datacenter by name
+        
+        Args:
+            datacenter_name: Name of the datacenter
+            
+        Returns:
+            Datacenter object or None
+        """
+        try:
+            container = self.content.viewManager.CreateContainerView(
+                self.content.rootFolder,
+                [vim.Datacenter],
+                False
+            )
+            
+            for dc in container.view:
+                if dc.name == datacenter_name:
+                    container.Destroy()
+                    return dc
+            
+            container.Destroy()
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error finding datacenter '{datacenter_name}': {e}")
+            return None
+
+    def list_vms_in_folder(self, datacenter_name, folder_path):
+        """
+        List all VMs in a specific folder
+        
+        Args:
+            datacenter_name: Name of the datacenter
+            folder_path: Path to folder (e.g., 'vm' or 'vm/prod/kubernetes')
+            
+        Returns:
+            List of VM information dictionaries
+        """
+        try:
+            folder = self.get_folder_by_path(datacenter_name, folder_path)
+            if not folder:
+                return []
+            
+            vms = []
+            self._collect_vms_recursive(folder, vms)
+            
+            logger.info(f"Found {len(vms)} VMs in {datacenter_name}/{folder_path}")
+            return vms
+            
+        except Exception as e:
+            logger.error(f"Error listing VMs in folder '{folder_path}': {e}")
+            return []
+
+    def _collect_vms_recursive(self, folder, vms):
+        """
+        Recursively collect VMs from a folder and subfolders
+        
+        Args:
+            folder: Folder to search
+            vms: List to accumulate VM info
+        """
+        if hasattr(folder, 'childEntity'):
+            for entity in folder.childEntity:
+                if isinstance(entity, vim.VirtualMachine):
+                    vm_info = {
+                        'name': entity.name,
+                        'power_state': entity.runtime.powerState,
+                        'tools_status': str(entity.guest.toolsStatus) if entity.guest else 'toolsNotInstalled',
+                        'guest_os': entity.config.guestFullName if entity.config else 'Unknown'
+                    }
+                    vms.append(vm_info)
+                elif isinstance(entity, vim.Folder):
+                    # Recursively search subfolders
+                    self._collect_vms_recursive(entity, vms)
+
+    def list_datacenters(self):
+        """
+        List all available datacenters
+        
+        Returns:
+            List of datacenter names
+        """
+        try:
+            container = self.content.viewManager.CreateContainerView(
+                self.content.rootFolder,
+                [vim.Datacenter],
+                False
+            )
+            
+            datacenters = [dc.name for dc in container.view]
+            container.Destroy()
+            
+            logger.info(f"Found {len(datacenters)} datacenters")
+            return datacenters
+            
+        except Exception as e:
+            logger.error(f"Error listing datacenters: {e}")
+            return []

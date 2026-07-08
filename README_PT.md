@@ -423,7 +423,7 @@ tail -f /var/log/redfish-vmware-server.log
 
 ### 1. Configurar VMs no vCenter
 
-Edite `config/config.json`:
+Edite `config/config.json`. O servidor escuta em uma única porta e usa o `{ID}` no caminho para selecionar VMs:
 
 ```json
 {
@@ -434,20 +434,84 @@ Edite `config/config.json`:
     "port": 443,
     "disable_ssl": true
   },
+  "redfish_port": 8443,
+  "disable_ssl": true,
   "vms": [
     {
       "name": "worker-vm-1",
       "vcenter_host": "seu-vcenter.dominio.com",
       "vcenter_user": "administrator@vsphere.local",
       "vcenter_password": "sua-senha",
-      "redfish_port": 8443,
       "redfish_user": "admin",
-      "redfish_password": "password",
-      "disable_ssl": true
+      "redfish_password": "password"
+    },
+    {
+      "name": "worker-vm-2",
+      "vcenter_host": "seu-vcenter.dominio.com",
+      "vcenter_user": "administrator@vsphere.local",
+      "vcenter_password": "sua-senha",
+      "redfish_user": "admin",
+      "redfish_password": "password"
     }
   ]
 }
 ```
+
+**Diferenças do modelo multi-servidor:**
+- Porta `redfish_port` única no nível superior (todas as VMs na mesma porta)
+- Flag `disable_ssl` no nível superior aplica-se ao servidor único
+- Seleção de VM via caminho da URL: `/redfish/v1/Systems/{vm_name}` onde `{vm_name}` vem da config
+
+### 1b. Auto-descoberta de VMs em Pastas do vCenter (Opcional)
+
+Você pode descobrir e gerenciar automaticamente todas as VMs em pastas específicas do datacenter do vCenter adicionando uma seção `datacenter_folders`:
+
+```json
+{
+  "vmware": {
+    "host": "seu-vcenter.dominio.com",
+    "user": "administrator@vsphere.local", 
+    "password": "sua-senha",
+    "port": 443,
+    "disable_ssl": true
+  },
+  "redfish_port": 8443,
+  "disable_ssl": true,
+  "vms": [
+    {
+      "name": "vm-configurada-manualmente",
+      "vcenter_host": "seu-vcenter.dominio.com",
+      "vcenter_user": "administrator@vsphere.local",
+      "vcenter_password": "sua-senha",
+      "redfish_user": "admin",
+      "redfish_password": "password"
+    }
+  ],
+  "datacenter_folders": [
+    {
+      "datacenter": "Datacenter1",
+      "folder_path": "vm/prod/kubernetes"
+    },
+    {
+      "datacenter": "Datacenter1",
+      "folder_path": "vm/staging"
+    }
+  ]
+}
+```
+
+**Recursos:**
+- ✅ Descobre automaticamente todas as VMs em pastas especificadas (recursivo)
+- ✅ Pula VMs já configuradas manualmente (sem duplicatas)
+- ✅ Usa credenciais globais do vCenter da seção `vmware`
+- ✅ Marca VMs descobertas nos logs com `discovered=true` e fonte da pasta
+- ✅ Mistura VMs manuais e autodescobiertas na mesma implantação
+- ✅ Todas as VMs descobiertas recebem credenciais Redfish padrão (`admin:password`)
+
+**Formato do Caminho da Pasta:**
+- `vm` - Todas as VMs na pasta raiz do datacenter
+- `vm/prod` - VMs na subpasta `prod`
+- `vm/prod/kubernetes` - VMs em pastas aninhadas (busca recursiva)
 
 ### 2. Executar Setup
 
@@ -553,29 +617,34 @@ spec:
 
 ## �🔧 Uso Básico
 
-### Endpoints Públicos
+### Endpoints Públicos (sem autenticação)
 ```bash
 # Service Root
-curl -k https://localhost:8443/redfish/v1/
+curl http://localhost:8443/redfish/v1/
 
-# Coleção de Sistemas
-curl -k https://localhost:8443/redfish/v1/Systems
+# Coleção de Sistemas (todas as VMs)
+curl http://localhost:8443/redfish/v1/Systems
 ```
 
-### Endpoints com Autenticação
+### Endpoints com Autenticação (HTTP Basic: admin:password)
 ```bash
-# Informações do Sistema
-curl -k -u admin:password https://localhost:8443/redfish/v1/Systems/skinner-worker-1
+# Informações do Sistema (seleciona VM pelo nome na URL)
+curl -u admin:password http://localhost:8443/redfish/v1/Systems/worker-vm-1
 
 # Ligar Sistema
-curl -k -u admin:password -X POST -H "Content-Type: application/json" \
+curl -u admin:password -X POST -H "Content-Type: application/json" \
      -d '{"ResetType": "On"}' \
-     https://localhost:8443/redfish/v1/Systems/skinner-worker-1/Actions/ComputerSystem.Reset
+     http://localhost:8443/redfish/v1/Systems/worker-vm-1/Actions/ComputerSystem.Reset
 
 # Desligar Sistema
-curl -k -u admin:password -X POST -H "Content-Type: application/json" \
+curl -u admin:password -X POST -H "Content-Type: application/json" \
      -d '{"ResetType": "ForceOff"}' \
-     http://localhost:8443/redfish/v1/Systems/skinner-worker-1/Actions/ComputerSystem.Reset
+     http://localhost:8443/redfish/v1/Systems/worker-vm-1/Actions/ComputerSystem.Reset
+
+# Configuração de Boot (boot ISO para deployment)
+curl -u admin:password -X PATCH -H "Content-Type: application/json" \
+     -d '{"Boot": {"BootSourceOverrideTarget": "Cd", "BootSourceOverrideEnabled": "Once"}}' \
+     http://localhost:8443/redfish/v1/Systems/worker-vm-1
 ```
 
 ### Controle do Serviço
