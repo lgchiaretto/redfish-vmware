@@ -497,92 +497,86 @@ class SystemsHandler:
             logger.error(f"❌ Power action error for {vm_name}: {e}")
             self._send_error_response(request_handler, 500, "Internal Server Error")
     
+    # Redfish BootSourceOverrideTarget -> VMware boot-order device names
+    _BOOT_TARGET_MAP = {
+        'Cd':       ['cdrom', 'disk', 'network'],
+        'Pxe':      ['network', 'disk', 'cdrom'],
+        'Hdd':      ['disk', 'cdrom', 'network'],
+        'Usb':      ['disk', 'cdrom', 'network'],
+        'BiosSetup': ['disk', 'cdrom', 'network'],
+        'None':     ['disk', 'cdrom', 'network'],
+    }
+
     def _handle_system_patch(self, request_handler, vm_name: str, path: str):
-        """Handle system PATCH requests"""
+        """Handle system PATCH requests — applies boot-order changes via VMware."""
         try:
             content_length = int(request_handler.headers.get('Content-Length', 0))
-            if content_length > 0:
-                patch_data = request_handler.rfile.read(content_length)
-                data = json.loads(patch_data.decode('utf-8'))
-                
-                # Handle boot configuration changes
-                if 'Boot' in data:
-                    boot_config = data['Boot']
-                    logger.info(f"🥾 Boot configuration change for {vm_name}: {boot_config}")
-                    
-                    # For now, just acknowledge the change
-                    request_handler.send_response(200)
-                    request_handler.send_header('Content-Type', 'application/json')
-                    request_handler.end_headers()
-                    
-                    response = {
-                        '@odata.type': '#ComputerSystem.v1_13_0.ComputerSystem',
-                        'Id': vm_name,
-                        'Boot': boot_config
-                    }
-                    request_handler.wfile.write(json.dumps(response).encode('utf-8'))
-                else:
-                    self._send_error_response(request_handler, 400, "No supported properties to patch")
-            else:
+            if not content_length:
                 self._send_error_response(request_handler, 400, "Missing patch data")
+                return
+
+            patch_data = request_handler.rfile.read(content_length)
+            data = json.loads(patch_data.decode('utf-8'))
+
+            if 'Boot' not in data:
+                self._send_error_response(request_handler, 400, "No supported properties to patch")
+                return
+
+            boot_config = data['Boot']
+            logger.info(f"🥾 Boot configuration change for {vm_name}: {boot_config}")
+
+            target = boot_config.get('BootSourceOverrideTarget')
+            enabled = boot_config.get('BootSourceOverrideEnabled', 'Once')
+
+            if target and target != 'None':
+                boot_order = self._BOOT_TARGET_MAP.get(target, ['disk', 'cdrom', 'network'])
+                vmware_client = self.vmware_clients.get(vm_name)
+                if vmware_client:
+                    success = vmware_client.set_vm_boot_order(vm_name, boot_order)
+                    if not success:
+                        logger.warning(f"⚠️  VMware boot order change failed for {vm_name}, continuing")
+                else:
+                    logger.warning(f"⚠️  No VMware client available for {vm_name}; boot order not applied")
+
+            # Return the updated system object so Metal3 can verify the change
+            updated = self._get_system_info(vm_name)
+            updated['Boot']['BootSourceOverrideTarget'] = target or 'None'
+            updated['Boot']['BootSourceOverrideEnabled'] = enabled
+            self._send_json_response(request_handler, 200, updated)
+
+        except json.JSONDecodeError as e:
+            self._send_error_response(request_handler, 400, f"Invalid JSON: {e}")
         except Exception as e:
             logger.error(f"❌ System PATCH error for {vm_name}: {e}")
             self._send_error_response(request_handler, 500, "Internal Server Error")
-    
+
     def _handle_bios_patch(self, request_handler, vm_name: str, path: str):
-        """Handle BIOS PATCH requests"""
-        try:
-            content_length = int(request_handler.headers.get('Content-Length', 0))
-            if content_length > 0:
-                patch_data = request_handler.rfile.read(content_length)
-                data = json.loads(patch_data.decode('utf-8'))
-                
-                logger.info(f"🔧 BIOS configuration change for {vm_name}: {data}")
-                
-                # For now, just acknowledge the change
-                request_handler.send_response(200)
-                request_handler.send_header('Content-Type', 'application/json')
-                request_handler.end_headers()
-                
-                response = {
-                    '@odata.type': '#Bios.v1_1_0.Bios',
-                    'Id': 'BIOS',
-                    'Attributes': data.get('Attributes', {})
-                }
-                request_handler.wfile.write(json.dumps(response).encode('utf-8'))
-            else:
-                self._send_error_response(request_handler, 400, "Missing patch data")
-        except Exception as e:
-            logger.error(f"❌ BIOS PATCH error for {vm_name}: {e}")
-            self._send_error_response(request_handler, 500, "Internal Server Error")
-    
+        """Handle BIOS PATCH requests.
+
+        VMware does not expose BIOS attribute configuration through the vSphere API.
+        Return 501 so clients know the operation is not supported rather than
+        silently pretending the change was applied.
+        """
+        logger.info(f"🔧 BIOS PATCH requested for {vm_name} — not supported on VMware")
+        self._send_error_response(
+            request_handler, 501,
+            "BIOS attribute configuration is not supported on VMware virtual machines"
+        )
+
     def _handle_secure_boot_patch(self, request_handler, vm_name: str, path: str):
-        """Handle SecureBoot PATCH requests"""
-        try:
-            content_length = int(request_handler.headers.get('Content-Length', 0))
-            if content_length > 0:
-                patch_data = request_handler.rfile.read(content_length)
-                data = json.loads(patch_data.decode('utf-8'))
-                
-                logger.info(f"🔒 SecureBoot configuration change for {vm_name}: {data}")
-                
-                # For now, just acknowledge the change
-                request_handler.send_response(200)
-                request_handler.send_header('Content-Type', 'application/json')
-                request_handler.end_headers()
-                
-                response = {
-                    '@odata.type': '#SecureBoot.v1_1_0.SecureBoot',
-                    'Id': 'SecureBoot',
-                    'SecureBootEnable': data.get('SecureBootEnable', True)
-                }
-                request_handler.wfile.write(json.dumps(response).encode('utf-8'))
-            else:
-                self._send_error_response(request_handler, 400, "Missing patch data")
-        except Exception as e:
-            logger.error(f"❌ SecureBoot PATCH error for {vm_name}: {e}")
-            self._send_error_response(request_handler, 500, "Internal Server Error")
-    
+        """Handle SecureBoot PATCH requests.
+
+        VMware SecureBoot state is part of the VM firmware configuration and
+        cannot be changed while the VM is running. Changing it also requires
+        a VM power cycle which is disruptive and is not performed automatically.
+        Return 501 so clients know this is not supported.
+        """
+        logger.info(f"🔒 SecureBoot PATCH requested for {vm_name} — not supported on VMware")
+        self._send_error_response(
+            request_handler, 501,
+            "SecureBoot configuration changes are not supported on VMware virtual machines"
+        )
+
     def _send_json_response(self, request_handler, status_code: int, data: Dict):
         """Send JSON response"""
         json_data = json.dumps(data, indent=2)

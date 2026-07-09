@@ -12,6 +12,8 @@
   },
   "redfish_port": 8443,
   "datacenter_folder_refresh_interval_seconds": 300,
+  "virtual_media_datastore": "[DatastoreName] iso/",
+  "delete_on_eject": false,
   "disable_ssl": true,
   "vms": [
     {

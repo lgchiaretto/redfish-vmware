@@ -174,5 +174,346 @@ class SystemsHandlerPayloadTests(unittest.TestCase):
                 self.assertEqual(payload["Members"][0]["@odata.id"], f"{path}/1")
 
 
+class AuthManagerTests(unittest.TestCase):
+    def _make_auth(self, config=None):
+        from src.auth.manager import AuthenticationManager
+        return AuthenticationManager(config or {})
+
+    def test_legacy_admin_password_always_accepted(self):
+        auth = self._make_auth()
+        self.assertTrue(auth._check_credentials("admin", "password"))
+
+    def test_per_vm_credentials_accepted(self):
+        auth = self._make_auth({
+            "vms": [{"name": "vm-test", "redfish_user": "user1", "redfish_password": "secret1"}]
+        })
+        self.assertTrue(auth._check_credentials("user1", "secret1"))
+
+    def test_unknown_credentials_rejected(self):
+        auth = self._make_auth({
+            "vms": [{"name": "vm-test", "redfish_user": "user1", "redfish_password": "secret1"}]
+        })
+        self.assertFalse(auth._check_credentials("user1", "wrong"))
+        self.assertFalse(auth._check_credentials("hacker", "password"))
+
+
+class SystemsPatchTests(unittest.TestCase):
+    def _make_patch_request(self, vm_name, body_dict):
+        import io
+        body = json.dumps(body_dict).encode()
+
+        class PatchReq(FakeRequestHandler):
+            def __init__(self):
+                super().__init__(f"/redfish/v1/Systems/{vm_name}")
+                self.headers = {"Content-Length": str(len(body))}
+                self.rfile = io.BytesIO(body)
+
+        return PatchReq()
+
+    def test_boot_patch_calls_vmware_set_boot_order(self):
+        class FakeClient:
+            def __init__(self):
+                self.boot_order_set = None
+            def get_vm_info(self, vm_name):
+                return {"power_state": "poweredOn", "cpu_count": 2, "memory_mb": 4096}
+            def set_vm_boot_order(self, vm_name, order):
+                self.boot_order_set = order
+                return True
+
+        fake_client = FakeClient()
+        handler = SystemsHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {"vm-test": fake_client},
+            None,
+        )
+        req = self._make_patch_request("vm-test", {"Boot": {"BootSourceOverrideTarget": "Cd", "BootSourceOverrideEnabled": "Once"}})
+        handler._handle_system_patch(req, "vm-test", req.path)
+        self.assertEqual(req.status_code, 200)
+        self.assertIsNotNone(fake_client.boot_order_set)
+        self.assertEqual(fake_client.boot_order_set[0], "cdrom")
+
+    def test_boot_patch_returns_updated_system_object(self):
+        class FakeClient:
+            def get_vm_info(self, vm_name):
+                return {"power_state": "poweredOff", "cpu_count": 1, "memory_mb": 2048}
+            def set_vm_boot_order(self, vm_name, order):
+                return True
+
+        handler = SystemsHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {"vm-test": FakeClient()},
+            None,
+        )
+        req = self._make_patch_request("vm-test", {"Boot": {"BootSourceOverrideTarget": "Pxe"}})
+        handler._handle_system_patch(req, "vm-test", req.path)
+        self.assertEqual(req.status_code, 200)
+        payload = json.loads(req.body.decode("utf-8"))
+        self.assertEqual(payload["Boot"]["BootSourceOverrideTarget"], "Pxe")
+
+    def test_bios_patch_returns_501(self):
+        import io
+        handler = SystemsHandler({"vm-test": {"name": "vm-test"}}, {}, None)
+        body = json.dumps({"Attributes": {"BootMode": "UEFI"}}).encode()
+        req = FakeRequestHandler("/redfish/v1/Systems/vm-test/Bios")
+        req.headers = {"Content-Length": str(len(body))}
+        req.rfile = io.BytesIO(body)
+        handler._handle_bios_patch(req, "vm-test", req.path)
+        self.assertEqual(req.status_code, 501)
+
+    def test_secure_boot_patch_returns_501(self):
+        import io
+        handler = SystemsHandler({"vm-test": {"name": "vm-test"}}, {}, None)
+        body = json.dumps({"SecureBootEnable": False}).encode()
+        req = FakeRequestHandler("/redfish/v1/Systems/vm-test/SecureBoot")
+        req.headers = {"Content-Length": str(len(body))}
+        req.rfile = io.BytesIO(body)
+        handler._handle_secure_boot_patch(req, "vm-test", req.path)
+        self.assertEqual(req.status_code, 501)
+
+
+class VirtualMediaHandlerTests(unittest.TestCase):
+    def _make_handler(self, config=None):
+        from src.handlers.managers_handler import ManagersHandler
+        return ManagersHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {},
+            config or {},
+        )
+
+    def test_resolve_iso_path_from_datastore_bracket_path(self):
+        handler = self._make_handler()
+        result = handler._resolve_iso_path("[DS1] isos/rhcos.iso", None)
+        self.assertEqual(result, "[DS1] isos/rhcos.iso")
+
+    def test_resolve_iso_path_from_http_url_with_datastore(self):
+        handler = self._make_handler({"virtual_media_datastore": "DS1"})
+        result = handler._resolve_iso_path("http://bastion.example.com/images/rhcos.iso", "DS1", "vm-master-0")
+        self.assertEqual(result, "[DS1] vm-master-0_rhcos.iso")
+
+    def test_resolve_iso_path_returns_none_without_datastore(self):
+        handler = self._make_handler()
+        result = handler._resolve_iso_path("rhcos.iso", None, "vm-test")
+        self.assertIsNone(result)
+
+    def test_resolve_iso_path_bracket_datastore_config(self):
+        handler = self._make_handler({"virtual_media_datastore": "[ISO_DS] isos"})
+        result = handler._resolve_iso_path("http://host/rhcos.iso", "[ISO_DS] isos", "vm-test")
+        self.assertEqual(result, "[ISO_DS] isos/vm-test_rhcos.iso")
+
+    def test_virtual_media_get_shows_not_inserted_by_default(self):
+        from src.handlers.managers_handler import ManagersHandler
+        handler = ManagersHandler({"vm-test": {"name": "vm-test"}}, {}, {})
+        req = FakeRequestHandler("/redfish/v1/Managers/vm-test-bmc/VirtualMedia/CD")
+        handler._handle_virtual_media_get(req, "vm-test-bmc", req.path)
+        self.assertEqual(req.status_code, 200)
+        payload = json.loads(req.body.decode("utf-8"))
+        self.assertFalse(payload["Inserted"])
+        self.assertEqual(payload["ConnectedVia"], "NotConnected")
+
+    def test_insert_media_stores_state_and_calls_mount(self):
+        import io
+        from src.handlers.managers_handler import ManagersHandler
+
+        class FakeClient:
+            def __init__(self):
+                self.mounted = None
+                self.uploaded_from = None
+                self.uploaded_to = None
+            def get_iso_status(self, vm_name):
+                return {"inserted": False, "image": None, "connected": False}
+            def upload_iso_to_datastore(self, source_url, datastore_path):
+                self.uploaded_from = source_url
+                self.uploaded_to = datastore_path
+                return True
+            def mount_iso(self, vm_name, iso_path):
+                self.mounted = iso_path
+                return True
+
+        fake_client = FakeClient()
+        handler = ManagersHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {"vm-test": fake_client},
+            {"virtual_media_datastore": "DS1"},
+        )
+
+        body = json.dumps({"Image": "http://bastion/rhcos.iso", "WriteProtected": True}).encode()
+
+        class PostReq(FakeRequestHandler):
+            def __init__(self):
+                super().__init__("/redfish/v1/Managers/vm-test-bmc/VirtualMedia/CD/Actions/VirtualMedia.InsertMedia")
+                self.headers = {"Content-Length": str(len(body))}
+                self.rfile = io.BytesIO(body)
+
+        req = PostReq()
+        handler._handle_insert_media(req, "vm-test", "vm-test-bmc", "CD")
+        self.assertEqual(req.status_code, 204)
+        # Upload should have been triggered for an HTTP URL
+        self.assertEqual(fake_client.uploaded_from, "http://bastion/rhcos.iso")
+        self.assertEqual(fake_client.uploaded_to, "[DS1] vm-test_rhcos.iso")
+        self.assertEqual(fake_client.mounted, "[DS1] vm-test_rhcos.iso")
+        state = handler._get_media_state("vm-test", "CD")
+        self.assertTrue(state["inserted"])
+        self.assertEqual(state["image"], "http://bastion/rhcos.iso")
+
+    def test_insert_media_skips_upload_for_datastore_path(self):
+        import io
+        from src.handlers.managers_handler import ManagersHandler
+
+        class FakeClient:
+            def __init__(self):
+                self.upload_called = False
+                self.mounted = None
+            def get_iso_status(self, vm_name):
+                return {"inserted": False, "image": None, "connected": False}
+            def upload_iso_to_datastore(self, source_url, datastore_path):
+                self.upload_called = True
+                return True
+            def mount_iso(self, vm_name, iso_path):
+                self.mounted = iso_path
+                return True
+
+        fake_client = FakeClient()
+        handler = ManagersHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {"vm-test": fake_client},
+            {"virtual_media_datastore": "DS1"},
+        )
+
+        # Image is already a datastore path — no upload should happen
+        body = json.dumps({"Image": "[DS1] isos/rhcos.iso"}).encode()
+
+        class PostReq(FakeRequestHandler):
+            def __init__(self):
+                super().__init__("/redfish/v1/Managers/vm-test-bmc/VirtualMedia/CD/Actions/VirtualMedia.InsertMedia")
+                self.headers = {"Content-Length": str(len(body))}
+                self.rfile = io.BytesIO(body)
+
+        req = PostReq()
+        handler._handle_insert_media(req, "vm-test", "vm-test-bmc", "CD")
+        self.assertEqual(req.status_code, 204)
+        self.assertFalse(fake_client.upload_called)
+        self.assertEqual(fake_client.mounted, "[DS1] isos/rhcos.iso")
+
+    def test_eject_media_clears_state_and_calls_unmount(self):
+        import io
+        from src.handlers.managers_handler import ManagersHandler
+
+        class FakeClient:
+            def __init__(self):
+                self.ejected = False
+            def get_iso_status(self, vm_name):
+                return {"inserted": True, "image": "[DS1] rhcos.iso", "connected": True}
+            def unmount_iso(self, vm_name):
+                self.ejected = True
+                return True
+
+        fake_client = FakeClient()
+        handler = ManagersHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {"vm-test": fake_client},
+            {},
+        )
+        # Force initial state from the "already mounted" VMware status
+        handler._get_media_state("vm-test", "CD")
+
+        req = FakeRequestHandler("/redfish/v1/Managers/vm-test-bmc/VirtualMedia/CD/Actions/VirtualMedia.EjectMedia")
+        req.rfile = io.BytesIO(b"")
+        handler._handle_eject_media(req, "vm-test", "vm-test-bmc", "CD")
+        self.assertEqual(req.status_code, 204)
+        self.assertTrue(fake_client.ejected)
+        state = handler._get_media_state("vm-test", "CD")
+        self.assertFalse(state["inserted"])
+
+    def test_eject_media_deletes_file_when_delete_on_eject_enabled(self):
+        import io
+        from src.handlers.managers_handler import ManagersHandler
+
+        class FakeClient:
+            def __init__(self):
+                self.ejected = False
+                self.deleted_path = None
+            def get_iso_status(self, vm_name):
+                # File was previously uploaded via our system — name carries the vm prefix
+                return {"inserted": True, "image": "[DS1] vm-test_rhcos.iso", "connected": True}
+            def unmount_iso(self, vm_name):
+                self.ejected = True
+                return True
+            def delete_datastore_file(self, path):
+                self.deleted_path = path
+                return True
+
+        fake_client = FakeClient()
+        handler = ManagersHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {"vm-test": fake_client},
+            {"delete_on_eject": True},
+        )
+        handler._get_media_state("vm-test", "CD")
+
+        req = FakeRequestHandler("/redfish/v1/Managers/vm-test-bmc/VirtualMedia/CD/Actions/VirtualMedia.EjectMedia")
+        req.rfile = io.BytesIO(b"")
+        handler._handle_eject_media(req, "vm-test", "vm-test-bmc", "CD")
+        self.assertEqual(req.status_code, 204)
+        self.assertEqual(fake_client.deleted_path, "[DS1] vm-test_rhcos.iso")
+
+    def test_eject_media_does_not_delete_when_delete_on_eject_disabled(self):
+        import io
+        from src.handlers.managers_handler import ManagersHandler
+
+        class FakeClient:
+            def __init__(self):
+                self.delete_called = False
+            def get_iso_status(self, vm_name):
+                return {"inserted": True, "image": "[DS1] rhcos.iso", "connected": True}
+            def unmount_iso(self, vm_name):
+                return True
+            def delete_datastore_file(self, path):
+                self.delete_called = True
+                return True
+
+        fake_client = FakeClient()
+        handler = ManagersHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {"vm-test": fake_client},
+            {"delete_on_eject": False},
+        )
+        handler._get_media_state("vm-test", "CD")
+
+        req = FakeRequestHandler("/redfish/v1/Managers/vm-test-bmc/VirtualMedia/CD/Actions/VirtualMedia.EjectMedia")
+        req.rfile = io.BytesIO(b"")
+        handler._handle_eject_media(req, "vm-test", "vm-test-bmc", "CD")
+        self.assertEqual(req.status_code, 204)
+        self.assertFalse(fake_client.delete_called)
+
+    def test_delete_on_eject_resolves_http_url_to_datastore_path(self):
+        import io
+        from src.handlers.managers_handler import ManagersHandler
+
+        class FakeClient:
+            def __init__(self):
+                self.deleted_path = None
+            def get_iso_status(self, vm_name):
+                # Image stored as HTTP URL
+                return {"inserted": True, "image": "http://bastion/images/rhcos.iso", "connected": True}
+            def unmount_iso(self, vm_name):
+                return True
+            def delete_datastore_file(self, path):
+                self.deleted_path = path
+                return True
+
+        fake_client = FakeClient()
+        handler = ManagersHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {"vm-test": fake_client},
+            {"delete_on_eject": True, "virtual_media_datastore": "DS1"},
+        )
+        handler._get_media_state("vm-test", "CD")
+
+        req = FakeRequestHandler("/redfish/v1/Managers/vm-test-bmc/VirtualMedia/CD/Actions/VirtualMedia.EjectMedia")
+        req.rfile = io.BytesIO(b"")
+        handler._handle_eject_media(req, "vm-test", "vm-test-bmc", "CD")
+        self.assertEqual(fake_client.deleted_path, "[DS1] vm-test_rhcos.iso")
+
+
 if __name__ == "__main__":
     unittest.main()

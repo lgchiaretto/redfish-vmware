@@ -339,11 +339,19 @@ class VMwareClient:
     def mount_iso(self, vm_name, iso_path):
         """Mount ISO to VM's CD/DVD drive"""
         return self.media_ops.mount_iso(vm_name, iso_path)
-    
+
+    def upload_iso_to_datastore(self, source_url: str, datastore_path: str) -> bool:
+        """Download an ISO from source_url and upload it to the vSphere datastore."""
+        return self.media_ops.upload_iso_to_datastore(source_url, datastore_path)
+
     def unmount_iso(self, vm_name):
         """Unmount ISO from VM's CD/DVD drive"""
         return self.media_ops.unmount_iso(vm_name)
-    
+
+    def delete_datastore_file(self, datastore_path: str) -> bool:
+        """Delete a file from a vSphere datastore."""
+        return self.media_ops.delete_datastore_file(datastore_path)
+
     # Legacy method support for backward compatibility
     def _wait_for_task(self, task):
         """Wait for a vCenter task to complete (legacy support)"""

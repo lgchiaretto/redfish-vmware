@@ -46,8 +46,7 @@ class AuthenticationManager:
                 
                 logger.debug(f"🔑 Basic auth attempt for user: {username}")
                 
-                # Check credentials (using default admin/password for now)
-                if username == 'admin' and password == 'password':
+                if self._check_credentials(username, password):
                     logger.info(f"✅ Basic authentication successful for: {username}")
                     return True, username
                 else:
@@ -65,7 +64,28 @@ class AuthenticationManager:
         
         logger.debug("🔒 Unsupported authentication method")
         return False, None
-    
+
+    def _check_credentials(self, username: str, password: str) -> bool:
+        """
+        Validate username/password against the configured VM credentials.
+
+        Accepts a match on any (redfish_user, redfish_password) pair defined in
+        the vm list, or the legacy default admin:password fallback.
+        """
+        # Legacy fallback always accepted (keeps backward compatibility)
+        if username == 'admin' and password == 'password':
+            return True
+
+        # Check against every VM's individual Redfish credentials
+        for vm in self.config.get('vms', []):
+            if isinstance(vm, dict):
+                vm_user = vm.get('redfish_user')
+                vm_pass = vm.get('redfish_password')
+                if vm_user and vm_user == username and vm_pass and vm_pass == password:
+                    return True
+
+        return False
+
     def create_session(self, username: str) -> Dict:
         """Create a new session for authenticated user"""
         import uuid
