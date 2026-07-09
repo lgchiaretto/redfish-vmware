@@ -7,6 +7,8 @@ Handles VM power management operations.
 import logging
 import time
 
+from pyVmomi import vim
+
 logger = logging.getLogger(__name__)
 
 
@@ -55,6 +57,8 @@ class PowerOperations:
             
             return result
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error powering on VM '{vm_name}': {e}")
             return False
@@ -90,6 +94,8 @@ class PowerOperations:
             
             return result
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error powering off VM '{vm_name}': {e}")
             return False
@@ -125,6 +131,8 @@ class PowerOperations:
             
             return result
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error resetting VM '{vm_name}': {e}")
             return False
@@ -169,6 +177,8 @@ class PowerOperations:
             logger.warning(f"Graceful shutdown timed out for '{vm_name}', forcing power off")
             return self.power_off_vm(vm_name)
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error shutting down VM '{vm_name}': {e}")
             return False
@@ -218,6 +228,8 @@ class PowerOperations:
             logger.warning(f"Restart verification timed out for '{vm_name}', but command was sent")
             return True
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error restarting VM '{vm_name}': {e}")
             return False

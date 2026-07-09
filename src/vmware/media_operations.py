@@ -84,6 +84,8 @@ class MediaOperations:
             
             return result
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error setting boot order for VM '{vm_name}': {e}")
             return False
@@ -141,6 +143,8 @@ class MediaOperations:
             
             return result
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error mounting ISO to VM '{vm_name}': {e}")
             return False
@@ -210,6 +214,8 @@ class MediaOperations:
             
             return result
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error unmounting ISO from VM '{vm_name}': {e}")
             return False
@@ -470,11 +476,14 @@ class MediaOperations:
                     if 'cd' in question_text.lower() or 'cdrom' in question_text.lower() or 'dvd' in question_text.lower():
                         logger.info(f"✅ Answering CD ejection question for VM")
                         try:
-                            # Answer the question with the first choice (typically "yes")
-                            if hasattr(question, 'choice') and question.choice and len(question.choice.choice) > 0:
-                                answer = question.choice.choice[0]
-                                self.connection.service_instance.AnswerVM(vm, question.id, answer)
-                                logger.info(f"✅ Answered CD ejection question")
+                            # vim.option.ChoiceOption stores choices in .choiceInfo (list of ElementDescription)
+                            # Each ElementDescription has a .key attribute to use as the answer
+                            if hasattr(question, 'choice') and hasattr(question.choice, 'choiceInfo') and question.choice.choiceInfo:
+                                answer = question.choice.choiceInfo[0].key
+                                vm.AnswerVM(question.id, answer)
+                                logger.info(f"✅ Answered CD ejection question with key: {answer}")
+                            else:
+                                logger.warning(f"No choices available in runtime question")
                         except Exception as e:
                             logger.warning(f"Could not answer runtime question: {e}")
                 

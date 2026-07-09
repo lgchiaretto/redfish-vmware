@@ -28,12 +28,14 @@ Located in `src/handlers/`, each handler is specialized:
 
 ### VMware Operations Layer
 Modularized VMware API interactions in `src/vmware/`:
-- `connection.py` - Manages single vSphere connection with SSL verification toggle
-- `vm_operations.py` - VM discovery, info retrieval, state management
+- `connection.py` - Manages single vSphere connection with SSL verification toggle; `reconnect()` and `is_connection_alive()` for session recovery
+- `vm_operations.py` - VM discovery, info retrieval, state management; uses `@property` for live `content` reference
 - `power_operations.py` - All power operations (on/off/reset/graceful)
-- `media_operations.py` - ISO upload, mounting, boot order, datastore file deletion
+- `media_operations.py` - ISO upload, mounting, boot order, datastore file deletion; force eject with runtime question handling
 
 **Key Pattern**: `VMwareClient` in `vmware_client.py` aggregates these modules and exposes a unified interface. Operations return boolean success/failure.
+
+**Auto-Reconnect Pattern**: The `track_vmware_operation` decorator in `vmware_client.py` catches `vim.fault.NotAuthenticated`, socket resets, and broken pipe errors, then automatically calls `connection.reconnect()`, refreshes sub-module connection references, and retries the operation once. All `except` blocks in `vmware/` modules re-raise `vim.fault.NotAuthenticated` before the broad catch so it propagates to the decorator.
 
 ### Task Management System
 Metal3 requires asynchronous operation tracking. `src/tasks/manager.py` provides:
@@ -164,7 +166,7 @@ Returns a rich Redfish-compliant ComputerSystem payload including:
 - `/redfish/v1/Systems/{vm}/SecureBoot`
 
 ### PATCH Behaviour
-- `PATCH /Systems/{vm}` with `Boot.*` - translates `BootSourceOverrideTarget` to a VMware boot order via `_BOOT_TARGET_MAP` and calls `vmware_client.set_vm_boot_order()`. Returns the updated full ComputerSystem.
+- `PATCH /Systems/{vm}` with `Boot.*` - translates `BootSourceOverrideTarget` to a VMware boot order via `_BOOT_TARGET_MAP` and calls `vmware_client.set_vm_boot_order()`. Boot order uses `vim.vm.BootOptions.BootableCdromDevice/BootableDiskDevice/BootableEthernetDevice` without explicit device keys. Returns the updated full ComputerSystem.
 - `PATCH /Systems/{vm}/Bios` - returns **501 Not Implemented** (VMware has no BIOS attribute API)
 - `PATCH /Systems/{vm}/SecureBoot` - returns **501 Not Implemented** (requires firmware reconfiguration + power cycle)
 
@@ -187,9 +189,11 @@ Full virtual media lifecycle under `/redfish/v1/Managers/{vm}-bmc/VirtualMedia/`
 
 **EjectMedia flow**:
 1. Validate media is currently inserted
-2. Unmount via `MediaOperations.unmount_iso`
-3. If `delete_on_eject: true` in config, resolve the stored datastore path and call `MediaOperations.delete_datastore_file`
-4. Clear in-memory media state
+2. Always uses **force eject** (`unmount_iso(force=True)`) to bypass OS-level CD locks
+3. Force eject sets `connected=False`/`startConnected=False` and uses `_wait_for_task_with_questions()` with a 5-second timeout
+4. `_wait_for_task_with_questions()` monitors `vm.runtime.question` during the task; if a CD ejection confirmation prompt appears (`vim.option.ChoiceOption`), answers it automatically using `question.choice.choiceInfo[0].key` via `vm.AnswerVM()`
+5. If `delete_on_eject: true` in config, resolve the stored datastore path and call `MediaOperations.delete_datastore_file`
+6. Clear in-memory media state
 
 **Config options**:
 - `virtual_media_datastore` - datastore name (`"DS1"`) or bracket notation (`"[DS1] isos/"`)
@@ -254,6 +258,8 @@ Test classes:
 - `SystemsPatchTests` - Boot PATCH calls VMware, BIOS/SecureBoot return 501
 - `SystemsHandlerPayloadTests` - system info shape and sub-resource collection routing
 - `VirtualMediaHandlerTests` - ISO path resolution (including `vm_name_` prefix), InsertMedia upload+mount flow, EjectMedia with/without `delete_on_eject`
+- `ManagersPostRoutingTests` - verifies InsertMedia POST routes correctly (not 404)
+- `SSLCertificateGenerationTests` - certificate generation, permissions, directory creation, SSL context
 
 ### Manual Testing Pattern
 ```bash
@@ -314,6 +320,7 @@ python3 -c "from src.vmware_client import VMwareClient; client = VMwareClient('v
 2. Expose via `VMwareClient` facade in `src/vmware_client.py`
 3. Follow pattern: log intent, perform operation, log result, return bool
 4. Handle VMware exceptions gracefully - Metal3 retries failed operations
+5. **Always add `except vim.fault.NotAuthenticated: raise`** before the broad `except Exception` in every public method — this allows the `track_vmware_operation` decorator to catch session expiry and reconnect automatically
 
 ### Task Management Changes
 Tasks auto-complete after 60 seconds if not updated. For long-running operations:
@@ -323,8 +330,10 @@ Tasks auto-complete after 60 seconds if not updated. For long-running operations
 
 ### SSL/TLS Configuration
 - Production: Uses Let's Encrypt certs from `/etc/letsencrypt/live/<hostname>/`
+- **Auto-generation**: If configured cert paths are missing, a self-signed RSA 2048-bit certificate valid for 365 days is generated automatically with SANs for `localhost`, `127.0.0.1`, and the configured hostname
 - Development: Set `"disable_ssl": true` in VM config for HTTP-only
 - **Critical**: OpenShift BMH files must use `http://` when `disable_ssl: true`, not `redfish://`
+- **Socket wrapping**: SSL wrapping is applied in `RedfishHTTPServer.server_bind()` BEFORE calling `super().server_bind()` to avoid connection reset errors
 
 ### Keeping This File Up to Date
 **This file must be updated whenever the following change**:
@@ -367,7 +376,7 @@ config/
   redfish-vmware-server.service  # SystemD unit file
 
 tests/
-  test_redfish_server.py     # Automated regression suite (24 tests)
+  test_redfish_server.py     # Automated regression suite (29 tests)
 
 openshift/                   # BareMetalHost YAML examples and testing guide
 ```
@@ -590,6 +599,7 @@ python3 -c "from src.vmware_client import VMwareClient; client = VMwareClient('v
 2. Expose via `VMwareClient` facade in `src/vmware_client.py`
 3. Follow pattern: log intent, perform operation, log result, return bool
 4. Handle VMware exceptions gracefully - Metal3 retries failed operations
+5. **Always add `except vim.fault.NotAuthenticated: raise`** before the broad `except Exception` in every public method — this allows the `track_vmware_operation` decorator to catch session expiry and reconnect automatically
 
 ### Task Management Changes
 Tasks auto-complete after 60 seconds if not updated. For long-running operations:

@@ -21,8 +21,12 @@ class VMOperations:
             connection: VMwareConnection instance
         """
         self.connection = connection
-        self.content = connection.get_content()
     
+    @property
+    def content(self):
+        """Always return the live content reference so reconnects are picked up."""
+        return self.connection.content
+
     def get_vm(self, vm_name):
         """
         Get VM object by name
@@ -34,8 +38,9 @@ class VMOperations:
             VM object or None if not found
         """
         try:
-            container = self.content.viewManager.CreateContainerView(
-                self.content.rootFolder,
+            content = self.connection.content
+            container = content.viewManager.CreateContainerView(
+                content.rootFolder,
                 [vim.VirtualMachine],
                 True
             )
@@ -49,6 +54,9 @@ class VMOperations:
             logger.warning(f"VM '{vm_name}' not found")
             return None
             
+        except vim.fault.NotAuthenticated:
+            # Re-raise so the vmware_client decorator can reconnect and retry
+            raise
         except Exception as e:
             logger.error(f"Error finding VM '{vm_name}': {e}")
             return None
@@ -61,8 +69,9 @@ class VMOperations:
             List of VM information dictionaries
         """
         try:
-            container = self.content.viewManager.CreateContainerView(
-                self.content.rootFolder,
+            content = self.connection.content
+            container = content.viewManager.CreateContainerView(
+                content.rootFolder,
                 [vim.VirtualMachine],
                 True
             )
@@ -81,6 +90,8 @@ class VMOperations:
             logger.info(f"Found {len(vms)} VMs")
             return vms
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error listing VMs: {e}")
             return []
@@ -113,6 +124,8 @@ class VMOperations:
                 'instance_uuid': vm.config.instanceUuid if vm.config else None
             }
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error getting VM info for '{vm_name}': {e}")
             return None
@@ -133,6 +146,8 @@ class VMOperations:
                 return vm.runtime.powerState
             return None
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error getting power state for '{vm_name}': {e}")
             return None
@@ -192,8 +207,9 @@ class VMOperations:
             Datacenter object or None
         """
         try:
-            container = self.content.viewManager.CreateContainerView(
-                self.content.rootFolder,
+            content = self.connection.content
+            container = content.viewManager.CreateContainerView(
+                content.rootFolder,
                 [vim.Datacenter],
                 False
             )
@@ -266,8 +282,9 @@ class VMOperations:
             List of datacenter names
         """
         try:
-            container = self.content.viewManager.CreateContainerView(
-                self.content.rootFolder,
+            content = self.connection.content
+            container = content.viewManager.CreateContainerView(
+                content.rootFolder,
                 [vim.Datacenter],
                 False
             )

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def track_vmware_operation(operation_name):
-    """Decorator to track VMware operations with timing and logging"""
+    """Decorator to track VMware operations with timing, logging and auto-reconnect on connection loss"""
     def decorator(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
@@ -44,7 +44,41 @@ def track_vmware_operation(operation_name):
                 return result
                 
             except Exception as e:
-                # Log failure
+                err_str = str(e)
+                # Check for various connection/auth failures that should trigger reconnect
+                should_reconnect = (
+                    'NotAuthenticated' in err_str or 
+                    'not authenticated' in err_str.lower() or
+                    'connection reset by peer' in err_str.lower() or
+                    'broken pipe' in err_str.lower() or
+                    'connection refused' in err_str.lower() or
+                    'connection aborted' in err_str.lower() or
+                    'Socket is closed' in err_str
+                )
+                
+                if should_reconnect:
+                    logger.warning(f"⚠️ [{operation_name}] Connection lost ({err_str}), reconnecting and retrying...")
+                    try:
+                        self.connection.reconnect()
+                        # Refresh the connection reference in all sub-modules
+                        self.vm_ops.connection = self.connection
+                        self.power_ops.connection = self.connection
+                        self.media_ops.connection = self.connection
+                        
+                        # Retry the operation
+                        result = func(self, *args, **kwargs)
+                        duration = time.time() - start_time
+                        logger.info(f"✅ [{operation_name}] Completed after reconnect for VM: {vm_name} in {duration:.3f}s")
+                        log_performance_metric(logger, operation_name, duration, True, vm_name=vm_name)
+                        return result
+                    except Exception as retry_e:
+                        duration = time.time() - start_time
+                        logger.error(f"❌ [{operation_name}] Failed after reconnect for VM: {vm_name} after {duration:.3f}s: {retry_e}")
+                        log_performance_metric(logger, operation_name, duration, False,
+                                             vm_name=vm_name, error=str(retry_e))
+                        raise retry_e
+                
+                # Log failure for non-connection errors
                 duration = time.time() - start_time
                 logger.error(f"❌ [{operation_name}] Failed for VM: {vm_name} after {duration:.3f}s: {e}")
                 log_performance_metric(logger, operation_name, duration, False, 
