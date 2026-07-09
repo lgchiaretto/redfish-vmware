@@ -403,7 +403,7 @@ class VirtualMediaHandlerTests(unittest.TestCase):
                 self.ejected = False
             def get_iso_status(self, vm_name):
                 return {"inserted": True, "image": "[DS1] rhcos.iso", "connected": True}
-            def unmount_iso(self, vm_name):
+            def unmount_iso(self, vm_name, force=False):
                 self.ejected = True
                 return True
 
@@ -435,7 +435,7 @@ class VirtualMediaHandlerTests(unittest.TestCase):
             def get_iso_status(self, vm_name):
                 # File was previously uploaded via our system — name carries the vm prefix
                 return {"inserted": True, "image": "[DS1] vm-test_rhcos.iso", "connected": True}
-            def unmount_iso(self, vm_name):
+            def unmount_iso(self, vm_name, force=False):
                 self.ejected = True
                 return True
             def delete_datastore_file(self, path):
@@ -465,7 +465,7 @@ class VirtualMediaHandlerTests(unittest.TestCase):
                 self.delete_called = False
             def get_iso_status(self, vm_name):
                 return {"inserted": True, "image": "[DS1] rhcos.iso", "connected": True}
-            def unmount_iso(self, vm_name):
+            def unmount_iso(self, vm_name, force=False):
                 return True
             def delete_datastore_file(self, path):
                 self.delete_called = True
@@ -495,7 +495,7 @@ class VirtualMediaHandlerTests(unittest.TestCase):
             def get_iso_status(self, vm_name):
                 # Image stored as HTTP URL
                 return {"inserted": True, "image": "http://bastion/images/rhcos.iso", "connected": True}
-            def unmount_iso(self, vm_name):
+            def unmount_iso(self, vm_name, force=False):
                 return True
             def delete_datastore_file(self, path):
                 self.deleted_path = path

@@ -46,19 +46,30 @@ class MediaOperations:
             
             logger.info(f"Setting boot order for VM '{vm_name}': {boot_order}")
             
-            # Create boot options
-            boot_options = []
-            for device in boot_order:
-                if device.lower() == 'cdrom':
-                    boot_options.append(vim.vm.BootOptions.BootableCdromDevice())
-                elif device.lower() == 'disk':
-                    boot_options.append(vim.vm.BootOptions.BootableDiskDevice())
-                elif device.lower() == 'network':
-                    boot_options.append(vim.vm.BootOptions.BootableEthernetDevice())
+            # Create boot options with requested device types
+            # pyVmomi boot device objects don't require explicit device keys
+            boot_devices = []
+            for device_type in boot_order:
+                device_type_lower = device_type.lower()
+                if device_type_lower == 'cdrom':
+                    boot_device = vim.vm.BootOptions.BootableCdromDevice()
+                    boot_devices.append(boot_device)
+                elif device_type_lower == 'disk':
+                    boot_device = vim.vm.BootOptions.BootableDiskDevice()
+                    boot_devices.append(boot_device)
+                elif device_type_lower in ['network', 'pxe']:
+                    boot_device = vim.vm.BootOptions.BootableEthernetDevice()
+                    boot_devices.append(boot_device)
+            
+            if not boot_devices:
+                logger.error(f"No valid boot devices found for requested boot order: {boot_order}")
+                return False
+            
+            logger.debug(f"Boot devices created: {[type(d).__name__ for d in boot_devices]}")
             
             # Configure boot options
             boot_spec = vim.vm.BootOptions()
-            boot_spec.bootOrder = boot_options
+            boot_spec.bootOrder = boot_devices
             
             config_spec = vim.vm.ConfigSpec()
             config_spec.bootOptions = boot_spec
@@ -134,12 +145,13 @@ class MediaOperations:
             logger.error(f"Error mounting ISO to VM '{vm_name}': {e}")
             return False
     
-    def unmount_iso(self, vm_name):
+    def unmount_iso(self, vm_name, force=False):
         """
         Unmount ISO from VM's CD/DVD drive
         
         Args:
             vm_name: Name of the virtual machine
+            force: If True, attempt to force eject bypassing OS locks (timeout after 5s)
             
         Returns:
             True if successful, False otherwise
@@ -150,7 +162,7 @@ class MediaOperations:
                 logger.error(f"VM '{vm_name}' not found")
                 return False
             
-            logger.info(f"Unmounting ISO from VM '{vm_name}'")
+            logger.info(f"Unmounting ISO from VM '{vm_name}'{' (force mode)' if force else ''}")
             
             # Find CD/DVD device
             cdrom_device = None
@@ -164,10 +176,14 @@ class MediaOperations:
                 return False
             
             # Configure CD/DVD device to disconnect
+            # For force eject, just disconnect without changing backing
             cdrom_spec = vim.vm.device.VirtualDeviceSpec()
             cdrom_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
             cdrom_spec.device = cdrom_device
-            cdrom_spec.device.backing = vim.vm.device.VirtualCdrom.RemotePassthroughBackingInfo()
+            
+            # Don't change backing info - just disconnect the device
+            # This bypasses OS locks by simply marking it as disconnected
+            cdrom_spec.device.backing = vim.vm.device.VirtualCdrom.IsoBackingInfo()
             cdrom_spec.device.connectable = vim.vm.device.VirtualDevice.ConnectInfo()
             cdrom_spec.device.connectable.connected = False
             cdrom_spec.device.connectable.startConnected = False
@@ -176,12 +192,21 @@ class MediaOperations:
             config_spec.deviceChange = [cdrom_spec]
             
             task = vm.Reconfigure(config_spec)
-            result = self._wait_for_task(task)
+            
+            # For force eject, wait for task and handle any runtime questions
+            if force:
+                result = self._wait_for_task_with_questions(task, vm, timeout=5)
+            else:
+                result = self._wait_for_task(task, timeout=None)
             
             if result:
                 logger.info(f"Successfully unmounted ISO from VM '{vm_name}'")
             else:
                 logger.error(f"Failed to unmount ISO from VM '{vm_name}'")
+                # If force eject timed out, try again with longer timeout
+                if force:
+                    logger.warning(f"Force eject timed out for VM '{vm_name}', retrying with longer timeout...")
+                    result = self._wait_for_task_with_questions(task, vm, timeout=15)
             
             return result
             
@@ -384,19 +409,27 @@ class MediaOperations:
             logger.error(f"Error getting ISO status for VM '{vm_name}': {e}")
             return {'inserted': False, 'image': None, 'connected': False}
 
-    def _wait_for_task(self, task):
+    def _wait_for_task(self, task, timeout=None):
         """
         Wait for a vCenter task to complete
         
         Args:
             task: Task object
+            timeout: Maximum seconds to wait (None = no timeout)
             
         Returns:
             True if task completed successfully, False otherwise
         """
         try:
             import time
+            start_time = time.time()
+            
             while task.info.state in ['running', 'queued']:
+                if timeout is not None:
+                    elapsed = time.time() - start_time
+                    if elapsed > timeout:
+                        logger.warning(f"Task timeout after {timeout}s in state '{task.info.state}'")
+                        return False
                 time.sleep(1)
             
             if task.info.state == 'success':
@@ -407,4 +440,57 @@ class MediaOperations:
                 
         except Exception as e:
             logger.error(f"Error waiting for task: {e}")
+            return False
+
+    def _wait_for_task_with_questions(self, task, vm, timeout=None):
+        """
+        Wait for a vCenter task to complete, handling any runtime questions.
+        Used for CD eject operations that may prompt for confirmation.
+        
+        Args:
+            task: Task object
+            vm: VM object to check for runtime questions
+            timeout: Maximum seconds to wait (None = no timeout)
+            
+        Returns:
+            True if task completed successfully, False otherwise
+        """
+        try:
+            import time
+            start_time = time.time()
+            
+            while task.info.state in ['running', 'queued']:
+                # Check for runtime questions and answer CD-related ones
+                if vm.runtime.question:
+                    question = vm.runtime.question
+                    question_text = question.text if hasattr(question, 'text') else str(question)
+                    logger.info(f"🤖 VM runtime question detected: {question_text}")
+                    
+                    # Check if this is a CD ejection question
+                    if 'cd' in question_text.lower() or 'cdrom' in question_text.lower() or 'dvd' in question_text.lower():
+                        logger.info(f"✅ Answering CD ejection question for VM")
+                        try:
+                            # Answer the question with the first choice (typically "yes")
+                            if hasattr(question, 'choice') and question.choice and len(question.choice.choice) > 0:
+                                answer = question.choice.choice[0]
+                                self.connection.service_instance.AnswerVM(vm, question.id, answer)
+                                logger.info(f"✅ Answered CD ejection question")
+                        except Exception as e:
+                            logger.warning(f"Could not answer runtime question: {e}")
+                
+                if timeout is not None:
+                    elapsed = time.time() - start_time
+                    if elapsed > timeout:
+                        logger.warning(f"Task timeout after {timeout}s in state '{task.info.state}'")
+                        return False
+                time.sleep(1)
+            
+            if task.info.state == 'success':
+                return True
+            else:
+                logger.error(f"Task failed: {task.info.error}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error waiting for task with questions: {e}")
             return False

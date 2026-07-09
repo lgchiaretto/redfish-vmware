@@ -238,13 +238,13 @@ class VMwareClient:
             raise
     
     @track_vmware_operation("Unmount ISO")
-    def unmount_iso(self, vm_name):
+    def unmount_iso(self, vm_name, force=False):
         """Unmount ISO with enhanced logging"""
         self.set_current_vm(vm_name)
         logger.info(f"💿 Unmounting ISO for VM: {vm_name}")
         
         try:
-            result = self.media_ops.unmount_iso(vm_name)
+            result = self.media_ops.unmount_iso(vm_name, force=force)
             logger.info(f"✅ ISO unmounted successfully for VM {vm_name}")
             return result
         except Exception as e:
@@ -344,9 +344,9 @@ class VMwareClient:
         """Download an ISO from source_url and upload it to the vSphere datastore."""
         return self.media_ops.upload_iso_to_datastore(source_url, datastore_path)
 
-    def unmount_iso(self, vm_name):
+    def unmount_iso(self, vm_name, force=False):
         """Unmount ISO from VM's CD/DVD drive"""
-        return self.media_ops.unmount_iso(vm_name)
+        return self.media_ops.unmount_iso(vm_name, force=force)
 
     def delete_datastore_file(self, datastore_path: str) -> bool:
         """Delete a file from a vSphere datastore."""

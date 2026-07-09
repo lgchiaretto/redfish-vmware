@@ -309,8 +309,11 @@ class ManagersHandler:
             self._send_error_response(request_handler, 503, "VMware client not available")
             return
 
-        logger.info(f"⏏️  Ejecting virtual media for {vm_name}")
-        success = vmware_client.unmount_iso(vm_name)
+        logger.info(f"⏏️  Ejecting virtual media for {vm_name} (force mode)")
+        
+        # Always use force eject to bypass OS locks
+        success = vmware_client.unmount_iso(vm_name, force=True)
+        
         if not success:
             self._send_error_response(request_handler, 500, "Failed to eject media")
             return
