@@ -113,7 +113,7 @@ class MediaOperations:
             cdrom_spec.device = cdrom_device
             cdrom_spec.device.backing = vim.vm.device.VirtualCdrom.IsoBackingInfo()
             cdrom_spec.device.backing.fileName = iso_path
-            cdrom_spec.device.connectable = vim.vm.device.VirtualDevice.ConnectableDevice()
+            cdrom_spec.device.connectable = vim.vm.device.VirtualDevice.ConnectInfo()
             cdrom_spec.device.connectable.connected = True
             cdrom_spec.device.connectable.startConnected = True
             
@@ -168,7 +168,7 @@ class MediaOperations:
             cdrom_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
             cdrom_spec.device = cdrom_device
             cdrom_spec.device.backing = vim.vm.device.VirtualCdrom.RemotePassthroughBackingInfo()
-            cdrom_spec.device.connectable = vim.vm.device.VirtualDevice.ConnectableDevice()
+            cdrom_spec.device.connectable = vim.vm.device.VirtualDevice.ConnectInfo()
             cdrom_spec.device.connectable.connected = False
             cdrom_spec.device.connectable.startConnected = False
             

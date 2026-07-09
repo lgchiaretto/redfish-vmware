@@ -7,6 +7,7 @@ with enhanced debugging, performance monitoring, and comprehensive logging.
 Converts Redfish operations to VMware vSphere API calls with detailed tracking.
 """
 
+import ipaddress
 import json
 import logging
 import os
@@ -15,7 +16,13 @@ import socketserver
 import sys
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from http.server import HTTPServer
+from cryptography import x509
+from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -99,16 +106,20 @@ health_monitor = ServerHealthMonitor()
 class RedfishHTTPServer(HTTPServer):
     """Enhanced HTTP server with Redfish handler and health monitoring"""
     
-    def __init__(self, server_address, RequestHandlerClass, handler):
-        super().__init__(server_address, RequestHandlerClass)
+    def __init__(self, server_address, RequestHandlerClass, handler, ssl_context=None):
+        self.ssl_context = ssl_context
         self.handler = handler
         self.allow_reuse_address = True
         self.health_monitor = health_monitor
+        super().__init__(server_address, RequestHandlerClass)
         
     def server_bind(self):
-        """Override to ensure proper socket configuration"""
-        super().server_bind()
+        """Override to apply SSL wrapping BEFORE binding and ensure proper socket configuration"""
+        if self.ssl_context:
+            # Wrap the socket with SSL BEFORE binding — avoids "connection reset by peer"
+            self.socket = self.ssl_context.wrap_socket(self.socket, server_side=True)
         self.socket.setsockopt(socketserver.socket.SOL_SOCKET, socketserver.socket.SO_REUSEADDR, 1)
+        super().server_bind()
         logger.debug(f"🔧 Server socket configured for {self.server_address}")
 
 
@@ -403,29 +414,103 @@ class RedfishServer:
         """(deprecated) Per-VM server startup is no longer used."""
         logger.warning("_start_vm_server called but per-VM servers are deprecated")
     
-    def _setup_ssl(self, server, vm_name, port):
-        """Setup SSL configuration for a server"""
+    def _generate_self_signed_cert(self, cert_path, key_path):
+        """Generate a self-signed SSL certificate and private key"""
+        try:
+            cert_dir = os.path.dirname(cert_path)
+            if cert_dir and not os.path.exists(cert_dir):
+                os.makedirs(cert_dir, mode=0o755)
+                logger.debug(f"📁 Created certificate directory: {cert_dir}")
+
+            logger.debug("🔧 Generating RSA private key (2048 bits)...")
+            private_key = rsa.generate_private_key(
+                public_exponent=65537,
+                key_size=2048,
+                backend=default_backend()
+            )
+
+            logger.debug("🔧 Generating self-signed certificate...")
+            subject = issuer = x509.Name([
+                x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+                x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "CA"),
+                x509.NameAttribute(NameOID.LOCALITY_NAME, "San Jose"),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "RedFish VMware Bridge"),
+                x509.NameAttribute(NameOID.COMMON_NAME, "redfish-vmware-server"),
+            ])
+
+            cert = x509.CertificateBuilder().subject_name(
+                subject
+            ).issuer_name(
+                issuer
+            ).public_key(
+                private_key.public_key()
+            ).serial_number(
+                x509.random_serial_number()
+            ).not_valid_before(
+                datetime.now(timezone.utc)
+            ).not_valid_after(
+                datetime.now(timezone.utc) + timedelta(days=365)
+            ).add_extension(
+                x509.SubjectAlternativeName([
+                    x509.DNSName("localhost"),
+                    x509.DNSName("*.chiaret.to"),
+                    x509.DNSName("bastion.chiaret.to"),
+                    x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+                ]),
+                critical=False,
+            ).sign(private_key, hashes.SHA256(), default_backend())
+
+            logger.debug(f"💾 Writing private key to: {key_path}")
+            with open(key_path, "wb") as f:
+                f.write(private_key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.TraditionalOpenSSL,
+                    encryption_algorithm=serialization.NoEncryption()
+                ))
+            os.chmod(key_path, 0o600)
+
+            logger.debug(f"💾 Writing certificate to: {cert_path}")
+            with open(cert_path, "wb") as f:
+                f.write(cert.public_bytes(serialization.Encoding.PEM))
+            os.chmod(cert_path, 0o644)
+
+            logger.info(f"✅ Self-signed SSL certificate generated successfully")
+            logger.info(f"   cert: {cert_path}")
+            logger.info(f"   key:  {key_path}")
+            logger.info(f"   validity: 365 days")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Failed to generate self-signed certificate: {e}")
+            return False
+
+    def _setup_ssl(self, vm_name, port):
+        """Setup SSL — generating a self-signed cert if no certificates exist. Returns SSLContext or None."""
         ssl_config = self.config.get('ssl', {})
         ssl_cert_path = ssl_config.get('cert_path')
         ssl_key_path = ssl_config.get('key_path')
-        
+
         if not ssl_cert_path or not ssl_key_path:
-            logger.warning(f"⚠️  SSL cert_path/key_path not defined in config, running HTTP only for {vm_name}")
-            logger.warning(f"💡 Add 'ssl' section with 'cert_path' and 'key_path' to config.json to enable HTTPS")
-            return
-        
+            default_cert_dir = "/etc/redfish-vmware/ssl"
+            ssl_cert_path = os.path.join(default_cert_dir, "server.crt")
+            ssl_key_path = os.path.join(default_cert_dir, "server.key")
+            logger.info(f"⚙️  No SSL paths configured, will use self-signed certificates")
+
+        if not os.path.exists(ssl_cert_path) or not os.path.exists(ssl_key_path):
+            logger.info(f"📝 SSL certificates not found, generating self-signed certificate...")
+            if not self._generate_self_signed_cert(ssl_cert_path, ssl_key_path):
+                logger.warning(f"⚠️  Failed to generate self-signed certificate, falling back to HTTP")
+                return None
+
         try:
-            if os.path.exists(ssl_cert_path) and os.path.exists(ssl_key_path):
-                context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-                context.load_cert_chain(ssl_cert_path, ssl_key_path)
-                server.socket = context.wrap_socket(server.socket, server_side=True)
-                logger.info(f"🔒 HTTPS enabled for {vm_name} using certificates from config")
-                logger.info(f"   cert: {ssl_cert_path}")
-            else:
-                logger.warning(f"⚠️  SSL certificates not found, running HTTP only for {vm_name}")
-                logger.warning(f"   Expected: {ssl_cert_path} and {ssl_key_path}")
+            logger.debug(f"🔐 Creating SSL context and loading certificates")
+            context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+            context.load_cert_chain(ssl_cert_path, ssl_key_path)
+            logger.info(f"🔒 HTTPS enabled for {vm_name} on port {port}")
+            logger.info(f"   cert: {ssl_cert_path}")
+            return context
         except Exception as ssl_error:
             logger.warning(f"⚠️  HTTPS setup failed for {vm_name}, falling back to HTTP: {ssl_error}")
+            return None
     
     def _start_health_reporter(self):
         """Start background thread for periodic health reporting"""
@@ -530,18 +615,23 @@ class RedfishServer:
         try:
             logger.info(f"🚀 Starting single Redfish server on port {port} (SSL disabled={disable_ssl})")
 
-            server = RedfishHTTPServer(
-                ('0.0.0.0', port),
-                RedfishRequestHandler,
-                redfish_handler
-            )
-
+            # Build SSL context before creating the server so the socket is
+            # wrapped BEFORE binding (prevents "connection reset by peer")
+            ssl_context = None
             if not disable_ssl:
-                # Use a generic server name for SSL messages
-                self._setup_ssl(server, 'redfish-server', port)
+                ssl_context = self._setup_ssl('redfish-server', port)
+                if ssl_context is None:
+                    logger.info(f"📄 SSL setup failed, falling back to HTTP mode")
             else:
                 logger.info(f"📄 HTTP mode enabled for server (SSL disabled)")
                 logger.info(f"💡 Client should connect to: http://bastion.chiaret.to:{port}/redfish/v1/")
+
+            server = RedfishHTTPServer(
+                ('0.0.0.0', port),
+                RedfishRequestHandler,
+                redfish_handler,
+                ssl_context=ssl_context
+            )
 
             server_thread = threading.Thread(
                 target=server.serve_forever,

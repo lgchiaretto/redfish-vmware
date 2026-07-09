@@ -25,6 +25,9 @@ pyyaml>=6.0
 
 # JSON processing (built-in json module used)
 
+# SSL Certificate generation
+cryptography>=3.4.8
+
 # For future enhancements (optional):
 # flask>=2.2.0          # If we want to use Flask instead of http.server
 # gunicorn>=20.1.0       # For production WSGI server

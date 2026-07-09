@@ -203,6 +203,8 @@ class RedfishHandler:
         # Route to specific handlers
         if path.startswith('/redfish/v1/Systems'):
             self.systems_handler.handle_post(request_handler, path)
+        elif path.startswith('/redfish/v1/Managers'):
+            self.managers_handler.handle_post(request_handler, path)
         elif path.startswith('/redfish/v1/SessionService/Sessions'):
             self._handle_session_creation(request_handler)
         else:

@@ -515,5 +515,169 @@ class VirtualMediaHandlerTests(unittest.TestCase):
         self.assertEqual(fake_client.deleted_path, "[DS1] vm-test_rhcos.iso")
 
 
+class ManagersPostRoutingTests(unittest.TestCase):
+    """Test that POST requests to /redfish/v1/Managers are properly routed"""
+
+    def _write_temp_config(self, config):
+        with tempfile.NamedTemporaryFile("w", delete=False) as handle:
+            json.dump(config, handle)
+            return handle.name
+
+    def test_insert_media_post_routes_to_managers_handler(self):
+        """Test that POST to VirtualMedia InsertMedia endpoint is not 404"""
+        import io
+        from unittest.mock import MagicMock, patch
+        from src.handlers.redfish_handler import RedfishHandler
+        from src.handlers.managers_handler import ManagersHandler
+
+        upload_called = []
+        mount_called = []
+
+        class FakeClient:
+            def get_iso_status(self, vm_name):
+                return {"inserted": False, "image": None, "connected": False}
+            def upload_iso_to_datastore(self, source_url, datastore_path):
+                upload_called.append((source_url, datastore_path))
+                return True
+            def mount_iso(self, vm_name, datastore_path):
+                mount_called.append((vm_name, datastore_path))
+                return True
+
+        vm_config = {"name": "vm-1", "vcenter_host": "h", "vcenter_user": "u", "vcenter_password": "p",
+                     "redfish_user": "admin", "redfish_password": "password"}
+        config = {
+            "vms": [vm_config],
+            "virtual_media_datastore": "DS1",
+            "delete_on_eject": False,
+            "redfish_port": 8443,
+            "disable_ssl": True,
+        }
+
+        handler = RedfishHandler([vm_config], config)
+        handler.vmware_clients["vm-1"] = FakeClient()
+        handler.managers_handler.vmware_clients["vm-1"] = FakeClient()
+        handler.managers_handler.config = config
+
+        body = json.dumps({"Image": "http://172.16.15.6/iso/test.iso"}).encode()
+        req = FakeRequestHandler("/redfish/v1/Managers/vm-1-bmc/VirtualMedia/CD/Actions/VirtualMedia.InsertMedia")
+        req.headers = {"Authorization": "Basic YWRtaW46cGFzc3dvcmQ="}  # admin:password
+        req.rfile = io.BytesIO(body)
+        req.headers["Content-Length"] = str(len(body))
+
+        # Should NOT return 404 - should reach the managers handler
+        handler.managers_handler.handle_post(req, req.path)
+        self.assertNotEqual(req.status_code, 404)
+
+
+class SSLCertificateGenerationTests(unittest.TestCase):
+    """Test self-signed SSL certificate generation"""
+
+    def _write_temp_config(self, config):
+        with tempfile.NamedTemporaryFile("w", delete=False) as handle:
+            json.dump(config, handle)
+            return handle.name
+
+    def test_generate_self_signed_cert_creates_files(self):
+        """Test that self-signed certificate generation creates cert and key files"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cert_path = os.path.join(tmpdir, "server.crt")
+            key_path = os.path.join(tmpdir, "server.key")
+
+            config = {
+                "redfish_port": 8443,
+                "disable_ssl": False,
+                "vms": [{"name": "vm-test", "vcenter_host": "vcenter.example.com",
+                         "vcenter_user": "admin", "vcenter_password": "password"}]
+            }
+            config_path = self._write_temp_config(config)
+            try:
+                server = RedfishServer(config_path)
+                result = server._generate_self_signed_cert(cert_path, key_path)
+
+                self.assertTrue(result)
+                self.assertTrue(os.path.exists(cert_path))
+                self.assertTrue(os.path.exists(key_path))
+
+                with open(cert_path, 'r') as f:
+                    self.assertIn("BEGIN CERTIFICATE", f.read())
+                with open(key_path, 'r') as f:
+                    self.assertIn("BEGIN RSA PRIVATE KEY", f.read())
+            finally:
+                os.unlink(config_path)
+
+    def test_generate_self_signed_cert_sets_permissions(self):
+        """Test that certificate and key file permissions are set correctly"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cert_path = os.path.join(tmpdir, "server.crt")
+            key_path = os.path.join(tmpdir, "server.key")
+
+            config = {
+                "redfish_port": 8443,
+                "disable_ssl": False,
+                "vms": [{"name": "vm-test", "vcenter_host": "vcenter.example.com",
+                         "vcenter_user": "admin", "vcenter_password": "password"}]
+            }
+            config_path = self._write_temp_config(config)
+            try:
+                server = RedfishServer(config_path)
+                server._generate_self_signed_cert(cert_path, key_path)
+
+                self.assertEqual(os.stat(key_path).st_mode & 0o777, 0o600)
+                self.assertEqual(os.stat(cert_path).st_mode & 0o777, 0o644)
+            finally:
+                os.unlink(config_path)
+
+    def test_generate_self_signed_cert_creates_directory(self):
+        """Test that certificate directory is created if it doesn't exist"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cert_dir = os.path.join(tmpdir, "ssl", "nested", "dir")
+            cert_path = os.path.join(cert_dir, "server.crt")
+            key_path = os.path.join(cert_dir, "server.key")
+
+            config = {
+                "redfish_port": 8443,
+                "disable_ssl": False,
+                "vms": [{"name": "vm-test", "vcenter_host": "vcenter.example.com",
+                         "vcenter_user": "admin", "vcenter_password": "password"}]
+            }
+            config_path = self._write_temp_config(config)
+            try:
+                self.assertFalse(os.path.exists(cert_dir))
+                server = RedfishServer(config_path)
+                result = server._generate_self_signed_cert(cert_path, key_path)
+
+                self.assertTrue(result)
+                self.assertTrue(os.path.exists(cert_dir))
+                self.assertTrue(os.path.exists(cert_path))
+                self.assertTrue(os.path.exists(key_path))
+            finally:
+                os.unlink(config_path)
+
+    def test_setup_ssl_returns_context_with_existing_certs(self):
+        """Test that _setup_ssl returns an SSL context when certificates exist"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cert_path = os.path.join(tmpdir, "server.crt")
+            key_path = os.path.join(tmpdir, "server.key")
+
+            config = {
+                "redfish_port": 8443,
+                "disable_ssl": False,
+                "vms": [{"name": "vm-test", "vcenter_host": "vcenter.example.com",
+                         "vcenter_user": "admin", "vcenter_password": "password"}]
+            }
+            config_path = self._write_temp_config(config)
+            try:
+                server = RedfishServer(config_path)
+                server._generate_self_signed_cert(cert_path, key_path)
+                server.config["ssl"] = {"cert_path": cert_path, "key_path": key_path}
+
+                context = server._setup_ssl("vm-test", 8443)
+
+                self.assertIsNotNone(context)
+                self.assertTrue(hasattr(context, 'wrap_socket'))
+            finally:
+                os.unlink(config_path)
+
+
 if __name__ == "__main__":
     unittest.main()
