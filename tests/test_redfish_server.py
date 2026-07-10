@@ -783,6 +783,76 @@ class MediaOperationsBootOrderTests(unittest.TestCase):
         self.assertEqual(boot_devices[2].deviceKey, 4000)
 
 
+class VMwareClientPoolTests(unittest.TestCase):
+    def _vm_config(self, name, host='vcenter.example.com', user='admin', password='secret'):
+        return {
+            'name': name,
+            'vcenter_host': host,
+            'vcenter_user': user,
+            'vcenter_password': password,
+        }
+
+    def test_reuses_client_for_same_vcenter_credentials(self):
+        from unittest.mock import patch
+        from src.vmware.client_pool import VMwareClientPool
+
+        with patch('src.vmware.client_pool.VMwareClient') as mock_client_cls:
+            mock_client_cls.side_effect = lambda *args, **kwargs: object()
+            pool = VMwareClientPool({})
+            vm_configs = {
+                'vm-1': self._vm_config('vm-1'),
+                'vm-2': self._vm_config('vm-2'),
+            }
+
+            clients = pool.sync_vm_clients(vm_configs)
+
+            self.assertIs(clients['vm-1'], clients['vm-2'])
+            self.assertEqual(mock_client_cls.call_count, 1)
+            self.assertEqual(pool.pooled_client_count, 1)
+
+    def test_creates_separate_clients_for_different_vcenters(self):
+        from unittest.mock import patch
+        from src.vmware.client_pool import VMwareClientPool
+
+        with patch('src.vmware.client_pool.VMwareClient') as mock_client_cls:
+            mock_client_cls.side_effect = lambda *args, **kwargs: object()
+            pool = VMwareClientPool({})
+            vm_configs = {
+                'vm-1': self._vm_config('vm-1', host='vcenter-a.example.com'),
+                'vm-2': self._vm_config('vm-2', host='vcenter-b.example.com'),
+            }
+
+            clients = pool.sync_vm_clients(vm_configs)
+
+            self.assertIsNot(clients['vm-1'], clients['vm-2'])
+            self.assertEqual(mock_client_cls.call_count, 2)
+            self.assertEqual(pool.pooled_client_count, 2)
+
+    def test_prunes_unused_clients_on_sync(self):
+        from unittest.mock import MagicMock, patch
+        from src.vmware.client_pool import VMwareClientPool
+
+        with patch('src.vmware.client_pool.VMwareClient') as mock_client_cls:
+            client_a = MagicMock()
+            client_b = MagicMock()
+            mock_client_cls.side_effect = [client_a, client_b]
+
+            pool = VMwareClientPool({})
+            initial = pool.sync_vm_clients({
+                'vm-1': self._vm_config('vm-1', host='vcenter-a.example.com'),
+                'vm-2': self._vm_config('vm-2', host='vcenter-b.example.com'),
+            })
+
+            self.assertEqual(pool.pooled_client_count, 2)
+            pool.sync_vm_clients({
+                'vm-1': self._vm_config('vm-1', host='vcenter-a.example.com'),
+            })
+
+            client_b.disconnect.assert_called_once()
+            self.assertEqual(pool.pooled_client_count, 1)
+            self.assertIs(initial['vm-1'], client_a)
+
+
 class VMwareReconnectTests(unittest.TestCase):
     def test_get_vm_info_reconnects_on_not_authenticated(self):
         from unittest.mock import MagicMock

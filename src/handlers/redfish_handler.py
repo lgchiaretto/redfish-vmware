@@ -10,13 +10,12 @@ Routes requests to appropriate handlers and manages the overall Redfish protocol
 import json
 import logging
 import time
-from typing import Dict, Optional
-from urllib.parse import urlparse, parse_qs
+from typing import Dict
 
 from auth.manager import AuthenticationManager
 from tasks.manager import TaskManager
 from models.redfish_schemas import RedfishModels
-from vmware_client import VMwareClient
+from vmware.client_pool import VMwareClientPool
 from .systems_handler import SystemsHandler
 from .managers_handler import ManagersHandler
 from .chassis_handler import ChassisHandler
@@ -31,7 +30,8 @@ class RedfishHandler:
     def __init__(self, vm_configs, config=None):
         self.vm_configs = {vm['name']: vm for vm in vm_configs}
         self.config = config or {}
-        self.vmware_clients = {}
+        self.vmware_client_pool = VMwareClientPool(self.config)
+        self.vmware_clients = self.vmware_client_pool.sync_vm_clients(self.vm_configs)
         
         # Initialize components
         self.auth_manager = AuthenticationManager(config)
@@ -42,19 +42,6 @@ class RedfishHandler:
         self.managers_handler = ManagersHandler(self.vm_configs, self.vmware_clients, self.config)
         self.chassis_handler = ChassisHandler(self.vm_configs, self.vmware_clients)
         self.update_service_handler = UpdateServiceHandler(self.vm_configs, self.vmware_clients, self.task_manager)
-        
-        # Initialize VMware clients for each VM
-        for vm_name, vm_config in self.vm_configs.items():
-            try:
-                self.vmware_clients[vm_name] = VMwareClient(
-                    vm_config['vcenter_host'],
-                    vm_config['vcenter_user'],
-                    vm_config['vcenter_password'],
-                    disable_ssl=vm_config.get('disable_ssl', True)
-                )
-                logger.info(f"✅ VMware client initialized for VM: {vm_name}")
-            except Exception as e:
-                logger.error(f"❌ Failed to initialize VMware client for {vm_name}: {e}")
         
         logger.info(f"🚀 Redfish handler initialized for {len(self.vm_configs)} VMs")
 
@@ -70,23 +57,7 @@ class RedfishHandler:
         self.chassis_handler.vm_configs = self.vm_configs
         self.update_service_handler.vm_configs = self.vm_configs
 
-        for vm_name, vm_config in self.vm_configs.items():
-            if vm_name in self.vmware_clients:
-                continue
-            try:
-                self.vmware_clients[vm_name] = VMwareClient(
-                    vm_config['vcenter_host'],
-                    vm_config['vcenter_user'],
-                    vm_config['vcenter_password'],
-                    disable_ssl=vm_config.get('disable_ssl', True)
-                )
-                logger.info(f"✅ VMware client initialized for VM: {vm_name}")
-            except Exception as e:
-                logger.error(f"❌ Failed to initialize VMware client for {vm_name}: {e}")
-
-        for stale_vm_name in list(self.vmware_clients.keys()):
-            if stale_vm_name not in self.vm_configs:
-                self.vmware_clients.pop(stale_vm_name, None)
+        self.vmware_clients = self.vmware_client_pool.sync_vm_clients(self.vm_configs, self.config)
 
         self.systems_handler.vmware_clients = self.vmware_clients
         self.managers_handler.vmware_clients = self.vmware_clients
@@ -461,11 +432,5 @@ class RedfishHandler:
         """Shutdown the handler"""
         logger.info("🛑 Shutting down Redfish handler")
         self.task_manager.shutdown()
-        
-        # Disconnect VMware clients
-        for vm_name, client in self.vmware_clients.items():
-            try:
-                client.disconnect()
-                logger.info(f"🔌 Disconnected VMware client for: {vm_name}")
-            except Exception as e:
-                logger.error(f"❌ Error disconnecting VMware client for {vm_name}: {e}")
+        self.vmware_client_pool.disconnect_all()
+        self.vmware_clients.clear()
