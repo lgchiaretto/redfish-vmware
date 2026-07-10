@@ -121,21 +121,16 @@ remove_firewall_rules() {
 import json
 try:
     config = json.load(open('$config_file'))
-    server_port = config.get('redfish_port')
-    if server_port:
-        print(str(server_port))
-    else:
-        ports = [str(vm.get('redfish_port', 8443)) for vm in config.get('vms', [])]
-        print(' '.join(ports))
+    print(str(config.get('redfish_port', 8443)))
 except:
-    print('8443 8444')
+    print('8443')
 " 2>/dev/null)
     else
-        ports="8443 8444"
+        ports="8443"
     fi
     
     if [[ -z "$ports" ]]; then
-        ports="8443 8444"
+        ports="8443"
     fi
     
     print_info "Removing firewall rules for ports: $ports"

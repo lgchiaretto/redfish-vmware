@@ -69,12 +69,12 @@ class RedfishServer:
         logger.info("🚀 Enhanced VMware Redfish Server initialized")
         logger.info(f"📋 Configuration loaded from: {config_path}")
         logger.info(f"💻 Managing {len(self.config.get('vms', []))} VMs")
+        logger.info(f"🌐 Redfish server port: {self._get_effective_server_port()}")
         logger.info(f"📊 Health monitoring enabled")
         
         # Log VM configurations (without sensitive data)
         for vm in self.config.get('vms', []):
-            effective_port = self._get_effective_server_port(vm_config=vm)
-            logger.info(f"🖥️  VM: {vm['name']} - vCenter: {vm['vcenter_host']} - Port: {effective_port}")
+            logger.info(f"🖥️  VM: {vm['name']} - vCenter: {vm['vcenter_host']}")
     
     def _load_config(self):
         """Load and validate configuration with enhanced error reporting"""
@@ -140,8 +140,8 @@ class RedfishServer:
         
         logger.info(f"✅ Configuration validation passed")
     
-    def _get_effective_server_port(self, config=None, vm_config=None):
-        """Return the effective Redfish server port from env, config, or VM config."""
+    def _get_effective_server_port(self, config=None):
+        """Return the effective Redfish server port from env or config."""
         config = config or self.config
 
         env_port = os.getenv('REDFISH_PORT')
@@ -154,14 +154,7 @@ class RedfishServer:
         if config and config.get('redfish_port') is not None:
             return config.get('redfish_port')
 
-        if vm_config and vm_config.get('redfish_port') is not None:
-            return vm_config.get('redfish_port')
-
         return 8443
-
-    def _get_effective_redfish_port(self, config=None, vm_config=None):
-        """Backward-compatible alias for effective port lookup."""
-        return self._get_effective_server_port(config=config, vm_config=vm_config)
 
     def _get_datacenter_folder_refresh_interval_seconds(self, config=None):
         """Return the configured datacenter-folder refresh interval in seconds."""
@@ -341,10 +334,6 @@ class RedfishServer:
             logger.debug(f"📍 Startup error details:", exc_info=True)
             self.stop()
             raise
-    
-    def _start_vm_server(self, vm_config, redfish_handler):
-        """(deprecated) Per-VM server startup is no longer used."""
-        logger.warning("_start_vm_server called but per-VM servers are deprecated")
     
     def _generate_self_signed_cert(self, cert_path, key_path):
         """Generate a self-signed SSL certificate and private key"""
@@ -531,7 +520,7 @@ class RedfishServer:
     def _start_single_server(self, vm_configs, redfish_handler):
         """Start a single HTTP(S) server that handles all VMs based on the {ID} in the URI"""
         # Determine server port
-        port = self._get_effective_server_port(vm_config=vm_configs[0] if vm_configs else None)
+        port = self._get_effective_server_port()
 
         # Determine SSL setting: prefer top-level, else derive from VM configs
         if 'disable_ssl' in self.config:
@@ -579,10 +568,6 @@ class RedfishServer:
         except Exception as e:
             logger.error(f"❌ Failed to start single Redfish server on port {port}: {e}")
             logger.debug(f"📍 Server startup error:", exc_info=True)
-    
-    def get_server_health(self):
-        """Get current server health statistics"""
-        return self.health_monitor.get_health_stats()
 
 
 def main():

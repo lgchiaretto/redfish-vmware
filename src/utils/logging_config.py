@@ -194,19 +194,6 @@ def get_logger(name):
     return logger
 
 
-def log_vmware_operation(logger, operation, vm_name=None, **kwargs):
-    """Log VMware operations with context"""
-    extra = {'operation': operation}
-    if vm_name:
-        extra['vm_name'] = vm_name
-    
-    # Add additional context
-    for key, value in kwargs.items():
-        extra[key] = value
-    
-    return logger
-
-
 def log_performance_metric(logger, operation, duration, success=True, **kwargs):
     """Log performance metrics for operations"""
     status = "✅" if success else "❌"

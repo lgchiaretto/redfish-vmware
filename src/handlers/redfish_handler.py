@@ -40,8 +40,8 @@ class RedfishHandler:
         # Initialize handlers
         self.systems_handler = SystemsHandler(self.vm_configs, self.vmware_clients, self.task_manager)
         self.managers_handler = ManagersHandler(self.vm_configs, self.vmware_clients, self.config)
-        self.chassis_handler = ChassisHandler(self.vm_configs, self.vmware_clients)
-        self.update_service_handler = UpdateServiceHandler(self.vm_configs, self.vmware_clients, self.task_manager)
+        self.chassis_handler = ChassisHandler(self.vm_configs)
+        self.update_service_handler = UpdateServiceHandler()
         
         logger.info(f"🚀 Redfish handler initialized for {len(self.vm_configs)} VMs")
 
@@ -55,14 +55,11 @@ class RedfishHandler:
         self.managers_handler.vm_configs = self.vm_configs
         self.managers_handler.config = self.config
         self.chassis_handler.vm_configs = self.vm_configs
-        self.update_service_handler.vm_configs = self.vm_configs
 
         self.vmware_clients = self.vmware_client_pool.sync_vm_clients(self.vm_configs, self.config)
 
         self.systems_handler.vmware_clients = self.vmware_clients
         self.managers_handler.vmware_clients = self.vmware_clients
-        self.chassis_handler.vmware_clients = self.vmware_clients
-        self.update_service_handler.vmware_clients = self.vmware_clients
 
         logger.info(f"🔄 Refreshed Redfish handler for {len(self.vm_configs)} VMs")
     

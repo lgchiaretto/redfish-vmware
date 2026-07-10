@@ -6,7 +6,7 @@ Handles Redfish UpdateService endpoints for firmware/software management.
 
 import json
 import logging
-from typing import Dict, Optional
+from typing import Dict
 
 from models.redfish_schemas import RedfishModels
 
@@ -16,15 +16,12 @@ logger = logging.getLogger(__name__)
 class UpdateServiceHandler:
     """Handler for Redfish UpdateService endpoints"""
     
-    def __init__(self, vm_configs: Dict, vmware_clients: Dict, task_manager):
-        self.vm_configs = vm_configs
-        self.vmware_clients = vmware_clients
-        self.task_manager = task_manager
+    def __init__(self):
         logger.info("🔄 UpdateService handler initialized")
     
     def handle_get(self, request_handler, path: str):
         """Handle GET requests for UpdateService"""
-        logger.warning(f"🔄 CRITICAL UpdateService GET: {path}")
+        logger.debug(f"🔄 UpdateService GET: {path}")
         
         if path == '/redfish/v1/UpdateService':
             # UpdateService root
@@ -108,10 +105,7 @@ class UpdateServiceHandler:
     def _send_json_response(self, request_handler, status_code: int, data: Dict):
         """Send JSON response"""
         json_data = json.dumps(data, indent=2)
-        
-        # Special logging for UpdateService responses
-        logger.warning(f"🔄 UpdateService Response {status_code}: {len(json_data)} bytes")
-        logger.debug(f"🔄 UpdateService Response Data: {json_data[:200]}...")
+        logger.debug(f"🔄 UpdateService Response {status_code}: {len(json_data)} bytes")
         
         request_handler.send_response(status_code)
         request_handler.send_header('Content-Type', 'application/json')

@@ -52,7 +52,7 @@ class RedfishServerPortTests(unittest.TestCase):
 
         try:
             server = RedfishServer(temp_path)
-            self.assertEqual(server._get_effective_redfish_port(vm_config=server.config["vms"][0]), 9443)
+            self.assertEqual(server._get_effective_server_port(), 9443)
         finally:
             os.unlink(temp_path)
 
@@ -332,7 +332,7 @@ class SystemsPatchTests(unittest.TestCase):
 class UpdateServiceHandlerTests(unittest.TestCase):
     def _make_handler(self):
         from src.handlers.update_service_handler import UpdateServiceHandler
-        return UpdateServiceHandler({}, {}, None)
+        return UpdateServiceHandler()
 
     def test_software_inventory_member_bmc_returns_200(self):
         handler = self._make_handler()

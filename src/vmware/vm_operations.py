@@ -129,28 +129,6 @@ class VMOperations:
         except Exception as e:
             logger.error(f"Error getting VM info for '{vm_name}': {e}")
             return None
-    
-    def get_vm_power_state(self, vm_name):
-        """
-        Get VM power state
-        
-        Args:
-            vm_name: Name of the virtual machine
-            
-        Returns:
-            Power state string or None
-        """
-        try:
-            vm = self.get_vm(vm_name)
-            if vm:
-                return vm.runtime.powerState
-            return None
-            
-        except vim.fault.NotAuthenticated:
-            raise
-        except Exception as e:
-            logger.error(f"Error getting power state for '{vm_name}': {e}")
-            return None
 
     def get_folder_by_path(self, datacenter_name, folder_path):
         """
@@ -273,28 +251,3 @@ class VMOperations:
                 elif isinstance(entity, vim.Folder):
                     # Recursively search subfolders
                     self._collect_vms_recursive(entity, vms)
-
-    def list_datacenters(self):
-        """
-        List all available datacenters
-        
-        Returns:
-            List of datacenter names
-        """
-        try:
-            content = self.connection.content
-            container = content.viewManager.CreateContainerView(
-                content.rootFolder,
-                [vim.Datacenter],
-                False
-            )
-            
-            datacenters = [dc.name for dc in container.view]
-            container.Destroy()
-            
-            logger.info(f"Found {len(datacenters)} datacenters")
-            return datacenters
-            
-        except Exception as e:
-            logger.error(f"Error listing datacenters: {e}")
-            return []

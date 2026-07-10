@@ -16,9 +16,8 @@ logger = logging.getLogger(__name__)
 class ChassisHandler:
     """Handler for Redfish Chassis endpoints"""
     
-    def __init__(self, vm_configs: Dict, vmware_clients: Dict):
+    def __init__(self, vm_configs: Dict):
         self.vm_configs = vm_configs
-        self.vmware_clients = vmware_clients
         logger.info("🏗️ Chassis handler initialized")
     
     def handle_get(self, request_handler, path: str):

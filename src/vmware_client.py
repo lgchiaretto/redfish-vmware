@@ -186,11 +186,6 @@ class VMwareClient:
         logger.info(f"📊 Found {len(vms)} VMs on {self.host}")
         return vms
 
-    @track_vmware_operation("Get VM")
-    def get_vm(self, vm_name):
-        """Get VM object by name"""
-        return self.vm_ops.get_vm(vm_name)
-
     @track_vmware_operation("Get VM Info")
     def get_vm_info(self, vm_name):
         """Get detailed VM information"""
@@ -200,11 +195,6 @@ class VMwareClient:
         else:
             logger.warning(f"⚠️ VM not found: {vm_name}")
         return vm_info
-
-    @track_vmware_operation("Get VM Power State")
-    def get_vm_power_state(self, vm_name):
-        """Get VM power state"""
-        return self.vm_ops.get_vm_power_state(vm_name)
 
     @track_vmware_operation("Power On VM")
     def power_on_vm(self, vm_name):
@@ -280,7 +270,3 @@ class VMwareClient:
         except Exception as e:
             logger.error(f"❌ Failed to get connection stats: {e}")
             return {'error': str(e)}
-
-    def _wait_for_task(self, task):
-        """Wait for a vCenter task to complete (legacy support)"""
-        return self.power_ops._wait_for_task(task)

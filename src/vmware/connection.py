@@ -133,11 +133,3 @@ class VMwareConnection:
     def is_connected(self):
         """Check if connection is active"""
         return self.service_instance is not None
-    
-    def get_service_instance(self):
-        """Get the service instance"""
-        return self.service_instance
-    
-    def get_content(self):
-        """Get the content object"""
-        return self.content
