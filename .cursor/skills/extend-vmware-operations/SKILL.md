@@ -14,14 +14,14 @@ VMwareClient (facade)  →  PowerOperations   →  VMwareConnection
                        →  [YourNewModule]    →  VMwareConnection
 ```
 
-## Step 1: Add to Existing Module or Create New
+The `@track_vmware_operation` decorator on VMwareClient methods catches session expiry (`vim.fault.NotAuthenticated`), socket resets, and broken pipe errors, calls `connection.reconnect()`, refreshes sub-module references, and retries once.
 
-### Adding to an existing module
+## Step 1: Add to Existing Module or Create New
 
 Choose the right module:
 - `power_operations.py` - Power on/off/reset/shutdown
-- `vm_operations.py` - VM discovery, info, listing
-- `media_operations.py` - ISO mount/unmount, boot order
+- `vm_operations.py` - VM discovery, info, folder listing
+- `media_operations.py` - ISO upload, mount/unmount, boot order, datastore delete
 
 ```python
 def new_operation(self, vm_name):
@@ -32,46 +32,14 @@ def new_operation(self, vm_name):
             return False
 
         logger.info(f"Performing operation on VM '{vm_name}'")
-
-        # pyVmomi operation
         task = vm.ReconfigVM_Task(spec)
         result = self._wait_for_task(task)
-
-        if result:
-            logger.info(f"Successfully completed on VM '{vm_name}'")
         return result
+    except vim.fault.NotAuthenticated:
+        raise  # CRITICAL: allows track_vmware_operation to reconnect and retry
     except Exception as e:
         logger.error(f"Error in operation for VM '{vm_name}': {e}")
         return False
-```
-
-### Creating a new module
-
-Create `src/vmware/new_operations.py`:
-
-```python
-#!/usr/bin/env python3
-"""New VMware Operations"""
-
-import logging
-
-logger = logging.getLogger(__name__)
-
-class NewOperations:
-    def __init__(self, connection, vm_operations):
-        self.connection = connection
-        self.vm_operations = vm_operations
-
-    def _wait_for_task(self, task, timeout=120):
-        """Wait for vSphere task completion"""
-        import time
-        start = time.time()
-        while task.info.state not in ['success', 'error']:
-            if time.time() - start > timeout:
-                logger.error("Task timed out")
-                return False
-            time.sleep(1)
-        return task.info.state == 'success'
 ```
 
 ## Step 2: Expose via VMwareClient Facade
@@ -79,16 +47,9 @@ class NewOperations:
 In `src/vmware_client.py`:
 
 ```python
-from vmware.new_operations import NewOperations
-
-class VMwareClient:
-    def __init__(self, host, username, password, ...):
-        # ... existing init ...
-        self.new_ops = NewOperations(self.connection, self.vm_ops)
-
-    @track_vmware_operation("new_operation")
-    def new_operation(self, vm_name):
-        return self.new_ops.new_operation(vm_name)
+@track_vmware_operation("new_operation")
+def new_operation(self, vm_name):
+    return self.power_ops.new_operation(vm_name)
 ```
 
 ## Step 3: Call from Handler
@@ -111,31 +72,10 @@ else:
 
 1. **Always return bool** from VMware operations
 2. **Always handle `None` VM** (vm not found)
-3. **Use `_wait_for_task()`** for async pyVmomi tasks
-4. **Log**: intent before, result after, errors with exception
+3. **Use `_wait_for_task()`** for async pyVmomi tasks; `_wait_for_task_with_questions()` when vSphere may prompt (CD eject)
+4. **Re-raise `vim.fault.NotAuthenticated`** before broad `except Exception` in every public method
 5. **Use the decorator** `@track_vmware_operation("name")` on facade methods
-
-## Common pyVmomi Patterns
-
-```python
-from pyVmomi import vim
-
-# Reconfigure VM
-spec = vim.vm.ConfigSpec()
-spec.numCPUs = 4
-task = vm.ReconfigVM_Task(spec=spec)
-
-# Get VM property
-power_state = vm.runtime.powerState  # 'poweredOn', 'poweredOff', 'suspended'
-memory_mb = vm.config.hardware.memoryMB
-num_cpus = vm.config.hardware.numCPU
-guest_id = vm.config.guestId
-
-# List devices
-for device in vm.config.hardware.device:
-    if isinstance(device, vim.vm.device.VirtualDisk):
-        # disk operations
-```
+6. **Log**: intent before, result after, errors with exception
 
 ## Testing
 
@@ -146,4 +86,7 @@ from src.vmware_client import VMwareClient
 client = VMwareClient('vcenter.host', 'user', 'pass')
 print(client.get_vm_info('vm-name'))
 "
+
+# Add regression test if handler behaviour changes
+PYTHONPATH=. python3 -m unittest tests.test_redfish_server
 ```

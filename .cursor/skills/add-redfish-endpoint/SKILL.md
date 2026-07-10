@@ -10,7 +10,8 @@ description: Step-by-step guide to add new Redfish REST API endpoints to the bri
 Files to modify (in order):
 1. `src/models/redfish_schemas.py` - Add response model
 2. `src/handlers/<resource>_handler.py` - Add handler logic (or create new handler)
-3. `src/handlers/redfish_handler.py` - Register route
+3. `src/handlers/redfish_handler.py` - Register route in `_route_get_request()` / `_route_post_request()` / `_route_patch_request()`
+4. `tests/test_redfish_server.py` - Add regression test
 
 ## Step 1: Define the Response Model
 
@@ -24,7 +25,6 @@ def get_new_resource(resource_id: str) -> Dict:
         '@odata.id': f'/redfish/v1/NewResource/{resource_id}',
         'Id': resource_id,
         'Name': f'Resource {resource_id}',
-        # Add resource-specific fields
     }
 ```
 
@@ -32,7 +32,7 @@ Every response MUST have `@odata.type` and `@odata.id`.
 
 ## Step 2: Add Handler Logic
 
-### Option A: Add to existing handler
+Handlers receive `(request_handler, path)` and extract VM name from the `{ID}` path segment under `/Systems/{ID}`.
 
 Add a method to the appropriate handler in `src/handlers/`:
 
@@ -42,48 +42,11 @@ def _handle_new_resource_get(self, request_handler, vm_name: str, path: str):
     self._send_json_response(request_handler, 200, data)
 ```
 
-Then route to it in the handler's `handle_get()`:
-
-```python
-elif '/NewResource' in path:
-    self._handle_new_resource_get(request_handler, vm_name, path)
-```
-
-### Option B: Create a new handler
-
-Create `src/handlers/new_handler.py` following the pattern in `systems_handler.py`:
-
-```python
-class NewHandler:
-    def __init__(self, vm_configs: Dict, vmware_clients: Dict, task_manager=None):
-        self.vm_configs = vm_configs
-        self.vmware_clients = vmware_clients
-        self.task_manager = task_manager
-
-    def handle_get(self, request_handler, path: str):
-        # Parse path and dispatch
-        ...
-
-    def _send_json_response(self, request_handler, status_code, data):
-        response = json.dumps(data, indent=2)
-        request_handler.send_response(status_code)
-        request_handler.send_header('Content-Type', 'application/json')
-        request_handler.send_header('Content-Length', str(len(response)))
-        request_handler.end_headers()
-        request_handler.wfile.write(response.encode())
-
-    def _send_error_response(self, request_handler, status_code, message):
-        error_data = {"error": {"code": f"Base.1.0.{status_code}", "message": message}}
-        self._send_json_response(request_handler, status_code, error_data)
-```
+For a new handler file, follow the pattern in `systems_handler.py` and instantiate in `RedfishHandler.__init__()`.
 
 ## Step 3: Register the Route
 
 In `src/handlers/redfish_handler.py`:
-
-1. Import the new handler (if new file)
-2. Instantiate in `__init__()` (if new handler)
-3. Add routing in `_route_get_request()`:
 
 ```python
 elif path.startswith('/redfish/v1/NewResource'):
@@ -94,19 +57,19 @@ elif path.startswith('/redfish/v1/NewResource'):
 
 Add similar routing in `_route_post_request()` and `_route_patch_request()` if needed.
 
-## Step 4: Test
+## Step 4: Add Regression Test
+
+In `tests/test_redfish_server.py`, add a test class or method covering the new endpoint:
 
 ```bash
-# Public endpoint (no auth)
-curl http://localhost:8443/redfish/v1/NewResource
+PYTHONPATH=. python3 -m unittest tests.test_redfish_server
+```
 
-# Authenticated endpoint
+## Step 5: Manual Test
+
+```bash
+# All VMs on single port — select VM via path
 curl -u admin:password http://localhost:8443/redfish/v1/NewResource/vm-name
-
-# POST action
-curl -u admin:password -X POST -H "Content-Type: application/json" \
-  -d '{"param": "value"}' \
-  http://localhost:8443/redfish/v1/NewResource/vm-name/Actions/Action.Name
 ```
 
 ## Metal3 Compatibility Checklist
@@ -114,5 +77,6 @@ curl -u admin:password -X POST -H "Content-Type: application/json" \
 - [ ] Response includes `@odata.type` and `@odata.id`
 - [ ] Collection responses include `Members@odata.count` and `Members` array
 - [ ] Error responses use the standard Redfish error format
-- [ ] Endpoint is accessible when auth is required (Metal3 sends Basic auth)
+- [ ] Endpoint accessible with Basic auth (Metal3 sends credentials from BMH Secret)
 - [ ] Endpoint handles missing VMs with 404
+- [ ] Regression test added and passing

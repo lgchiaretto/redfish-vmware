@@ -2,11 +2,10 @@
 
 ## What Is This Project?
 
-A **Redfish-to-VMware vSphere bridge** that exposes VMware VMs as Redfish REST API endpoints.
+A **Redfish-to-VMware vSphere bridge** that translates standard Redfish REST API calls into VMware vSphere operations.
 Built for **OpenShift Metal3/Ironic** to manage VMware VMs as bare metal hosts.
 
-Each VM gets its own HTTP(S) server on a dedicated port (8440-8444+).
-Metal3 treats each endpoint as an independent BMC (Baseboard Management Controller).
+**Critical context**: This is an AI-generated codebase designed for production Metal3 deployments. Architecture prioritizes Metal3 compatibility over generic Redfish compliance.
 
 ---
 
@@ -16,7 +15,7 @@ Metal3 treats each endpoint as an independent BMC (Baseboard Management Controll
 Metal3/Ironic                      Redfish-VMware Bridge                  vCenter
 ┌──────────────┐     HTTP/HTTPS    ┌──────────────────────┐    pyVmomi   ┌──────────┐
 │  OpenShift   │ ───────────────── │  RedfishServer       │ ──────────── │ vSphere  │
-│  BMH CRD     │  :8440-8444      │    ├─ RedfishHandler  │             │  API     │
+│  BMH CRD     │  :8443 (single)  │    ├─ RedfishHandler  │             │  API     │
 │              │                   │    │   ├─ Systems     │             │          │
 │              │                   │    │   ├─ Managers    │             │          │
 │              │                   │    │   ├─ Chassis     │             │          │
@@ -27,27 +26,37 @@ Metal3/Ironic                      Redfish-VMware Bridge                  vCente
 └──────────────┘                   └──────────────────────┘             └──────────┘
 ```
 
+### Single-Server Design
+- **One Redfish HTTP(S) server for all VMs** on a top-level `redfish_port` (or `REDFISH_PORT` env var)
+- VM selection via URI path: `/redfish/v1/Systems/{ID}` — clients change the `{ID}` segment, not the port
+- Example: `http://bastion.example.com:8443/redfish/v1/Systems/vm-master-1`
+
+### VM Auto-Discovery
+- `datacenter_folders` in config triggers automatic VM discovery from vCenter folder paths
+- `FolderRefreshMonitor` background thread re-scans on `datacenter_folder_refresh_interval_seconds` (default 300s)
+- Stale discovered VMs pruned via `_prune_stale_discovered_vms()`; `redfish_handler.refresh_vm_configs()` updates running handlers
+
 ---
 
 ## File Structure
 
 ```
 src/
-  redfish_server.py          # Entry point - starts one HTTP server per VM
-  vmware_client.py           # Facade over all VMware operations
+  redfish_server.py          # Entry point, config load, folder refresh loop, startup
+  vmware_client.py           # Facade over all VMware operations (with auto-reconnect decorator)
   handlers/
-    redfish_handler.py       # Main router: GET/POST/PATCH/DELETE → resource handlers
+    redfish_handler.py       # Main router + refresh_vm_configs()
     http_handler.py          # Base HTTP handler, auth enforcement, request tracking
-    systems_handler.py       # /redfish/v1/Systems/* - VM power, boot, BIOS, storage
-    managers_handler.py      # /redfish/v1/Managers/* - BMC, virtual media
-    chassis_handler.py       # /redfish/v1/Chassis/* - physical chassis representation
-    update_service_handler.py # /redfish/v1/UpdateService/* - firmware/software inventory
+    systems_handler.py       # ComputerSystem, sub-resources, boot/BIOS/SecureBoot PATCH
+    managers_handler.py      # BMC, virtual media insert/eject/upload
+    chassis_handler.py       # Physical chassis representation
+    update_service_handler.py # Firmware/software inventory (Metal3 inspection)
   vmware/
-    connection.py            # vSphere SmartConnect with SSL toggle
-    vm_operations.py         # VM discovery, info, listing
+    connection.py            # vSphere SmartConnect, reconnect(), is_connection_alive()
+    vm_operations.py         # VM discovery, info, folder listing
     power_operations.py      # Power on/off/reset/shutdown via pyVmomi
-    media_operations.py      # ISO mount/unmount, boot order configuration
-  auth/manager.py            # Basic auth (admin/password), session tokens
+    media_operations.py      # ISO upload, mount/unmount, boot order, datastore delete
+  auth/manager.py            # Basic auth, per-VM credentials, session tokens
   tasks/manager.py           # Async task tracking (Metal3 requirement)
   models/redfish_schemas.py  # Static Redfish JSON response builders
   utils/logging_config.py    # Logging setup, debug env vars
@@ -55,6 +64,8 @@ config/
   config.json                # VM definitions and vCenter credentials (DO NOT COMMIT)
   config.json.example        # Template for new setups
   redfish-vmware-server.service  # systemd unit file
+tests/
+  test_redfish_server.py     # Automated regression suite
 openshift/
   README.md                  # BareMetalHost testing guide
   *.yaml                     # BMH and Secret examples
@@ -71,10 +82,55 @@ python3 src/redfish_server.py --config config/config.json
 # With debug logging
 REDFISH_DEBUG=true python3 src/redfish_server.py --config config/config.json
 
-# Production (systemd)
+# Production (systemd) — use setup.sh for installation
 sudo systemctl start redfish-vmware-server
 sudo journalctl -u redfish-vmware-server -f
+
+# Automated tests
+PYTHONPATH=. python3 -m unittest tests.test_redfish_server
 ```
+
+---
+
+## Configuration
+
+Config file: `config/config.json` (copy from `config/config.json.example`)
+
+```json
+{
+  "vmware": { "host": "...", "user": "...", "password": "...", "disable_ssl": true },
+  "vms": [
+    {
+      "name": "vm-name",
+      "vcenter_host": "...",
+      "vcenter_user": "...",
+      "vcenter_password": "...",
+      "redfish_user": "admin",
+      "redfish_password": "password"
+    }
+  ],
+  "datacenter_folders": [
+    { "datacenter": "Datacenter1", "folder_path": "vm/prod/kubernetes" }
+  ],
+  "redfish_port": 8443,
+  "disable_ssl": true,
+  "datacenter_folder_refresh_interval_seconds": 300,
+  "virtual_media_datastore": "DatastoreName",
+  "delete_on_eject": false
+}
+```
+
+Key rules:
+- Top-level `redfish_port` is the single server port (not per-VM)
+- `name` must **exactly match** the VM name in vCenter
+- Config must contain `vms` and/or `datacenter_folders`
+- Never commit `config.json` (contains credentials)
+
+Environment variables:
+- `REDFISH_DEBUG=true` - Full debug logging
+- `REDFISH_PERF_DEBUG=true` - Performance metrics
+- `REDFISH_VMWARE_DEBUG=true` - VMware operation details
+- `REDFISH_PORT` - Override server port (systemd)
 
 ---
 
@@ -93,154 +149,106 @@ self._send_json_response(request_handler, 200, data)      # success
 self._send_error_response(request_handler, 404, "Not found")  # error
 ```
 
-### Error Handling Pattern
-```python
-try:
-    # operation
-except Exception as e:
-    logger.error(f"❌ Description: {e}")
-    logger.debug("Details", exc_info=True)
-    return False  # VMware ops return bool
-    # or
-    self._send_error_response(handler, 500, "Internal Error")  # HTTP handlers
-```
-
-### Redfish Response Requirements
-Every JSON response MUST include:
-- `@odata.type` - Schema type with version (e.g. `#ComputerSystem.v1_13_0.ComputerSystem`)
-- `@odata.id` - Canonical URI of the resource
-
-Collections MUST include:
-- `Members@odata.count` - Integer count
-- `Members` - Array of `{"@odata.id": "..."}` links
-
 ### VMware Operations
 - All VMware operations return `True` (success) or `False` (failure)
 - Always check for `None` VM before operating
 - Use `_wait_for_task()` for async pyVmomi tasks
 - Use the `@track_vmware_operation("name")` decorator on VMwareClient methods
+- **Auto-reconnect**: decorator catches `vim.fault.NotAuthenticated`, socket resets, broken pipe; reconnects and retries once
+- **Always re-raise** `vim.fault.NotAuthenticated` before broad `except Exception` in vmware/ modules
 
 ### Authentication
-- Fixed credentials: `admin` / `password`
-- Public endpoints (no auth): `/redfish/v1/`, `/redfish/v1/health`, `/redfish/v1/Systems` (GET)
+- **Legacy fallback**: `admin:password` always accepted
+- **Per-VM credentials**: any `(redfish_user, redfish_password)` pair in the `vms` list is accepted
+- Public endpoints (no auth): `/redfish/v1/`, `/redfish/v1/Systems` (GET)
 - All other endpoints require HTTP Basic Auth
 
 ### Logging
-- Use emoji prefixes for quick scanning: 🚀 startup, ✅ success, ❌ error, 🔍 debug, 🤖 Metal3
+- Use emoji prefixes: 🚀 startup, ✅ success, ❌ error, 🔍 debug, 🤖 Metal3
 - `logger.info()` for user-visible events
 - `logger.debug()` for request details (only visible with REDFISH_DEBUG=true)
-- `logger.warning()` for SSL/auth issues
-- `logger.error()` for failures
+
+### Redfish Response Requirements
+Every JSON response MUST include `@odata.type` and `@odata.id`.
+Collections MUST include `Members@odata.count` and `Members` array.
+
+---
+
+## Key Endpoints
+
+### ComputerSystem (GET /redfish/v1/Systems/{vm})
+Rich payload with ProcessorSummary, MemorySummary, sub-resource links (Bios, SecureBoot, Storage, Processors, Memory, NetworkInterfaces, EthernetInterfaces), and `Oem.VMware` block.
+
+### PATCH Behaviour
+- `PATCH /Systems/{vm}` with `Boot.*` → VMware boot order via `_BOOT_TARGET_MAP`
+- `PATCH /Systems/{vm}/Bios` → **501 Not Implemented**
+- `PATCH /Systems/{vm}/SecureBoot` → **501 Not Implemented**
+
+### Virtual Media
+Full lifecycle under `/redfish/v1/Managers/{vm}-bmc/VirtualMedia/`:
+- InsertMedia: downloads HTTP URL, uploads to vSphere datastore (prefixed `{vm_name}_`), mounts ISO
+- EjectMedia: force eject with runtime question handling; optional `delete_on_eject` config
 
 ---
 
 ## How to Add a New Feature
 
 ### New Redfish Endpoint
-1. Add response model → `src/models/redfish_schemas.py` (static method on `RedfishModels`)
+1. Add response model → `src/models/redfish_schemas.py`
 2. Add handler logic → `src/handlers/<resource>_handler.py`
 3. Register route → `src/handlers/redfish_handler.py` (`_route_get_request()` etc.)
-4. Test with curl
+4. Add regression test → `tests/test_redfish_server.py`
+5. Test with curl
 
 ### New VMware Operation
-1. Add method → `src/vmware/<module>.py` (return bool)
+1. Add method → `src/vmware/<module>.py` (return bool, re-raise NotAuthenticated)
 2. Expose via facade → `src/vmware_client.py` (with `@track_vmware_operation`)
 3. Call from handler
-
-### New Handler (entirely new resource)
-1. Create `src/handlers/new_handler.py` following `systems_handler.py` pattern
-2. Import and instantiate in `RedfishHandler.__init__()`
-3. Add routes in `_route_get/post/patch_request()`
 
 ---
 
 ## Testing
 
-**No automated test suite exists.** All testing is manual.
+### Automated Test Suite
+```bash
+PYTHONPATH=. python3 -m unittest tests.test_redfish_server
+```
+Test classes: `RedfishServerPortTests`, `AuthManagerTests`, `SystemsPatchTests`, `SystemsHandlerPayloadTests`, `VirtualMediaHandlerTests`, `ManagersPostRoutingTests`, `SSLCertificateGenerationTests`
 
-### Quick Smoke Test
+### Manual Smoke Test
 ```bash
 curl -s http://localhost:8443/redfish/v1/ | python3 -m json.tool
-curl -s -u admin:password http://localhost:8443/redfish/v1/Systems | python3 -m json.tool
+curl -s -u admin:password http://localhost:8443/redfish/v1/Systems/vm-name | python3 -m json.tool
 ```
-
-### Power Operations
-```bash
-# Power On
-curl -u admin:password -X POST -H "Content-Type: application/json" \
-  -d '{"ResetType": "On"}' \
-  http://localhost:8443/redfish/v1/Systems/VM_NAME/Actions/ComputerSystem.Reset
-
-# Power Off
-curl -u admin:password -X POST -H "Content-Type: application/json" \
-  -d '{"ResetType": "ForceOff"}' \
-  http://localhost:8443/redfish/v1/Systems/VM_NAME/Actions/ComputerSystem.Reset
-```
-
-### Full Endpoint Scan
-Test all endpoints return HTTP 200:
-```bash
-for ep in / /Systems /Systems/VM /Managers /Chassis /UpdateService /TaskService/Tasks; do
-  echo "$(curl -s -o /dev/null -w '%{http_code}' -u admin:password http://localhost:8443/redfish/v1${ep}) ${ep}"
-done
-```
-
-### VMware Connectivity
-```bash
-python3 -c "
-from src.vmware_client import VMwareClient
-c = VMwareClient('vcenter.host', 'user', 'pass')
-print(c.get_vm_info('vm-name'))
-"
-```
-
----
-
-## Debugging
-
-### Enable Debug Logging
-```bash
-REDFISH_DEBUG=true python3 src/redfish_server.py --config config/config.json
-```
-
-### systemd Logs
-```bash
-sudo journalctl -u redfish-vmware-server -f
-sudo journalctl -u redfish-vmware-server --since "5 minutes ago" | grep "ERROR\|WARNING"
-```
-
-### Common Issues
-
-| Problem | Cause | Fix |
-|---------|-------|-----|
-| `Address already in use` | Port conflict | `sudo ss -tlnp \| grep PORT` then kill the process |
-| `Failed to initialize VMware client` | vCenter unreachable | Check network, credentials, DNS |
-| BMH stuck in `inspecting` | Missing endpoints | Check UpdateService, Storage, TaskService return 200 |
-| SSL handshake errors | Certificate issues | Use `disable_ssl: true` in config |
-| Service won't start | Bad config JSON | `python3 -c "import json; json.load(open('config/config.json'))"` |
 
 ---
 
 ## Metal3/OpenShift Integration
 
-### BareMetalHost Flow
-1. BMH created → Metal3 connects to Redfish endpoint
-2. Inspection → queries Systems, Storage, BIOS, UpdateService
-3. Provisioning → mounts ISO via VirtualMedia, sets boot to Cd, powers on
-4. Management → power on/off/reset via ComputerSystem.Reset actions
+### Critical Endpoints
+- `/redfish/v1/UpdateService` - FirmwareInventory, SoftwareInventory
+- `/redfish/v1/TaskService/Tasks` - Task history (60+ tasks expected)
+- `/redfish/v1/Systems/{id}/Storage` - RAID controller discovery
+- `/redfish/v1/Managers/{id}/VirtualMedia` - ISO mounting for deployment
 
 ### BMH Address Format
-- HTTP mode (`disable_ssl: true`): `http://host:port/redfish/v1/Systems/vm-name`
-- HTTPS mode: `redfish://host:port/redfish/v1/Systems/vm-name`
+- HTTP mode (`disable_ssl: true`): `http://host:8443/redfish/v1/Systems/vm-name`
+- HTTPS mode: `redfish://host:8443/redfish/v1/Systems/vm-name`
+- **Always use HTTP for Metal3** to avoid certificate issues
 
-Recommendation: always use HTTP for Metal3 to avoid certificate issues.
+See `openshift/README.md` for complete BMH testing guide.
 
-### Monitoring BMH State
-```bash
-oc get bmh -n openshift-machine-api
-oc describe bmh VM_NAME -n openshift-machine-api
-oc logs -n openshift-machine-api -l app=metal3 -c ironic --tail=50
-```
+---
+
+## Common Issues
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| `Address already in use` | Port conflict on `redfish_port` | `sudo ss -tlnp \| grep 8443` then kill process |
+| `Failed to initialize VMware client` | vCenter unreachable | Check network, credentials, DNS |
+| BMH stuck in `inspecting` | Missing endpoints | Check UpdateService, Storage, TaskService return 200 |
+| SSL handshake errors | Certificate issues | Use `disable_ssl: true` in config |
+| Service won't start | Bad config JSON | Validate JSON; ensure `vms` or `datacenter_folders` present |
 
 ---
 
@@ -252,20 +260,3 @@ All in `requirements.txt`:
 - `pyyaml>=6.0` - YAML support
 - `requests>=2.28.0` - HTTP client
 - Standard library: `http.server`, `ssl`, `threading`, `json`, `logging`
-
----
-
-## Configuration
-
-Config file: `config/config.json` (copy from `config/config.json.example`)
-
-Key rules:
-- Each VM needs a **unique** `redfish_port`
-- `name` must **exactly match** the VM name in vCenter
-- Never commit `config.json` (contains credentials)
-- `redfish_user`/`redfish_password` are always `admin`/`password`
-
-Environment variables:
-- `REDFISH_DEBUG=true` - Full debug logging
-- `REDFISH_PERF_DEBUG=true` - Performance metrics
-- `REDFISH_VMWARE_DEBUG=true` - VMware operation details

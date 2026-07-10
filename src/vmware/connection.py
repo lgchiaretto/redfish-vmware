@@ -8,6 +8,7 @@ import ssl
 import logging
 import atexit
 from pyVim.connect import SmartConnect, Disconnect
+from pyVmomi import vim
 
 logger = logging.getLogger(__name__)
 
@@ -92,10 +93,15 @@ class VMwareConnection:
 
     def ensure_authenticated(self):
         """Check session is alive; reconnect if not authenticated."""
+        if not self.service_instance:
+            self.reconnect()
+            return
+
         try:
-            # A lightweight call to verify the session is still valid
-            if self.service_instance:
-                self.service_instance.CurrentTime()
+            self.service_instance.CurrentTime()
+        except vim.fault.NotAuthenticated:
+            logger.warning(f"⚠️ Session expired for {self.host}, reconnecting...")
+            self.reconnect()
         except Exception as e:
             err_str = str(e)
             if 'NotAuthenticated' in err_str or 'not authenticated' in err_str.lower():

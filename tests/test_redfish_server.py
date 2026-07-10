@@ -679,5 +679,34 @@ class SSLCertificateGenerationTests(unittest.TestCase):
                 os.unlink(config_path)
 
 
+class VMwareReconnectTests(unittest.TestCase):
+    def test_get_vm_info_reconnects_on_not_authenticated(self):
+        from unittest.mock import MagicMock
+        from pyVmomi import vim
+        from src.vmware_client import VMwareClient
+
+        client = VMwareClient.__new__(VMwareClient)
+        client.host = 'vcenter.example.com'
+        client.connection = MagicMock()
+        client.vm_ops = MagicMock()
+        client.power_ops = MagicMock()
+        client.media_ops = MagicMock()
+
+        client.vm_ops.get_vm_info.side_effect = [
+            vim.fault.NotAuthenticated(),
+            {'name': 'vm-1', 'power_state': 'poweredOff'},
+        ]
+
+        result = client.get_vm_info('vm-1')
+
+        client.connection.ensure_authenticated.assert_called()
+        client.connection.reconnect.assert_called_once()
+        self.assertEqual(client.vm_ops.connection, client.connection)
+        self.assertEqual(client.power_ops.connection, client.connection)
+        self.assertEqual(client.media_ops.connection, client.connection)
+        self.assertEqual(result['name'], 'vm-1')
+        self.assertEqual(client.vm_ops.get_vm_info.call_count, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

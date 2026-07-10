@@ -54,7 +54,7 @@ class NewHandler:
 
 ## Path Routing Pattern
 
-Handlers parse URL paths by splitting on `/` and matching resource segments:
+All VMs share a single server port. Handlers extract the VM name from the `{ID}` segment in paths like `/redfish/v1/Systems/{ID}/...`:
 
 ```python
 def _extract_vm_name(self, path: str) -> Optional[str]:
@@ -65,6 +65,8 @@ def _extract_vm_name(self, path: str) -> Optional[str]:
             return parts[idx + 1]
     return None
 ```
+
+After datacenter folder refresh, `RedfishHandler.refresh_vm_configs(vm_configs, config)` updates all sub-handler VM registries and VMware clients without restarting the server.
 
 ## Request Flow
 
