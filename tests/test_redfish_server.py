@@ -438,6 +438,8 @@ class VirtualMediaHandlerTests(unittest.TestCase):
             def unmount_iso(self, vm_name, force=False):
                 self.ejected = True
                 return True
+            def datastore_file_exists(self, path):
+                return True
             def delete_datastore_file(self, path):
                 self.deleted_path = path
                 return True
@@ -455,6 +457,37 @@ class VirtualMediaHandlerTests(unittest.TestCase):
         handler._handle_eject_media(req, "vm-test", "vm-test-bmc", "CD")
         self.assertEqual(req.status_code, 204)
         self.assertEqual(fake_client.deleted_path, "[DS1] vm-test_rhcos.iso")
+
+    def test_eject_media_skips_delete_when_file_not_on_datastore(self):
+        import io
+        from src.handlers.managers_handler import ManagersHandler
+
+        class FakeClient:
+            def __init__(self):
+                self.delete_called = False
+            def get_iso_status(self, vm_name):
+                return {"inserted": True, "image": "[DS1] vm-test_rhcos.iso", "connected": True}
+            def unmount_iso(self, vm_name, force=False):
+                return True
+            def datastore_file_exists(self, path):
+                return False
+            def delete_datastore_file(self, path):
+                self.delete_called = True
+                return True
+
+        fake_client = FakeClient()
+        handler = ManagersHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {"vm-test": fake_client},
+            {"delete_on_eject": True},
+        )
+        handler._get_media_state("vm-test", "CD")
+
+        req = FakeRequestHandler("/redfish/v1/Managers/vm-test-bmc/VirtualMedia/CD/Actions/VirtualMedia.EjectMedia")
+        req.rfile = io.BytesIO(b"")
+        handler._handle_eject_media(req, "vm-test", "vm-test-bmc", "CD")
+        self.assertEqual(req.status_code, 204)
+        self.assertFalse(fake_client.delete_called)
 
     def test_eject_media_does_not_delete_when_delete_on_eject_disabled(self):
         import io
@@ -496,6 +529,8 @@ class VirtualMediaHandlerTests(unittest.TestCase):
                 # Image stored as HTTP URL
                 return {"inserted": True, "image": "http://bastion/images/rhcos.iso", "connected": True}
             def unmount_iso(self, vm_name, force=False):
+                return True
+            def datastore_file_exists(self, path):
                 return True
             def delete_datastore_file(self, path):
                 self.deleted_path = path
@@ -712,8 +747,39 @@ class MediaOperationsBootOrderTests(unittest.TestCase):
         ]
 
         self.assertEqual(len(boot_devices), 3)
-        self.assertEqual(boot_devices[0].deviceKey, 3000)
+        self.assertEqual(type(boot_devices[0]).__name__, 'BootableCdromDevice')
         self.assertEqual(boot_devices[1].deviceKey, 2000)
+        self.assertEqual(boot_devices[2].deviceKey, 4000)
+
+    def test_hdd_boot_order_builds_disk_before_cdrom(self):
+        try:
+            from pyVmomi import vim
+            from src.vmware.media_operations import MediaOperations
+        except ImportError:
+            self.skipTest("pyVmomi not installed")
+
+        from unittest.mock import MagicMock
+
+        cdrom = vim.vm.device.VirtualCdrom()
+        cdrom.key = 16000
+        disk = vim.vm.device.VirtualDisk()
+        disk.key = 2000
+        nic = vim.vm.device.VirtualEthernetCard()
+        nic.key = 4000
+
+        vm = MagicMock()
+        vm.config.hardware.device = [disk, cdrom, nic]
+
+        ops = MediaOperations(MagicMock(), MagicMock())
+        device_keys = ops._collect_boot_device_keys(vm)
+        boot_devices = [
+            ops._create_boot_device(device_type, device_keys)
+            for device_type in ['disk', 'cdrom', 'network']
+        ]
+
+        self.assertEqual(len(boot_devices), 3)
+        self.assertEqual(boot_devices[0].deviceKey, 2000)
+        self.assertEqual(type(boot_devices[1]).__name__, 'BootableCdromDevice')
         self.assertEqual(boot_devices[2].deviceKey, 4000)
 
 

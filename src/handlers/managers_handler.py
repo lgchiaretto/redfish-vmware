@@ -327,10 +327,15 @@ class ManagersHandler:
                 datastore = self._get_virtual_media_datastore()
                 iso_path = self._resolve_iso_path(iso_path, datastore, vm_name)
             if iso_path:
-                logger.info(f"\U0001f5d1\ufe0f  delete_on_eject: removing {iso_path} from datastore")
-                deleted = vmware_client.delete_datastore_file(iso_path)
-                if not deleted:
-                    logger.warning(f"\u26a0\ufe0f  delete_on_eject: failed to delete {iso_path}")
+                if vmware_client.datastore_file_exists(iso_path):
+                    logger.info(f"\U0001f5d1\ufe0f  delete_on_eject: removing {iso_path} from datastore")
+                    deleted = vmware_client.delete_datastore_file(iso_path)
+                    if not deleted:
+                        logger.warning(f"\u26a0\ufe0f  delete_on_eject: failed to delete {iso_path}")
+                else:
+                    logger.info(
+                        f"\U0001f5d1\ufe0f  delete_on_eject: skipping delete — file not found on datastore: {iso_path}"
+                    )
             else:
                 logger.warning("\u26a0\ufe0f  delete_on_eject: could not resolve datastore path; file not deleted")
         request_handler.send_response(204)

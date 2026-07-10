@@ -43,12 +43,10 @@ class MediaOperations:
         """Create a VMware boot device object bound to a real hardware device key."""
         device_type_lower = device_type.lower()
         if device_type_lower == 'cdrom':
-            keys = device_keys['cdrom']
-            if not keys:
+            if not device_keys['cdrom']:
                 return None
-            boot_device = vim.vm.BootOptions.BootableCdromDevice()
-            boot_device.deviceKey = keys[0]
-            return boot_device
+            # BootableCdromDevice has no deviceKey property in the vSphere API.
+            return vim.vm.BootOptions.BootableCdromDevice()
 
         if device_type_lower == 'disk':
             keys = device_keys['disk']
@@ -270,6 +268,74 @@ class MediaOperations:
             logger.error(f"Error unmounting ISO from VM '{vm_name}': {e}")
             return False
     
+    def _parse_datastore_path(self, datastore_path: str):
+        """Parse '[DS] folder/file.iso' into (datastore_name, file_path)."""
+        if not (datastore_path.startswith('[') and ']' in datastore_path):
+            return None
+        bracket_end = datastore_path.index(']')
+        ds_name = datastore_path[1:bracket_end].strip()
+        file_path = datastore_path[bracket_end + 1:].strip().lstrip('/')
+        if not ds_name or not file_path:
+            return None
+        return ds_name, file_path
+
+    def _build_datastore_file_url(self, ds_name: str, file_path: str) -> str:
+        """Build the HTTPS URL for a file on a vSphere datastore."""
+        content = self.connection.content
+        datacenter_name = self._get_datacenter_name_for_datastore(content, ds_name)
+        if not datacenter_name:
+            datacenter_name = 'ha-datacenter'
+        vcenter_host = self.connection.host
+        return (
+            f"https://{vcenter_host}/folder/{urllib.request.pathname2url(file_path)}"
+            f"?dcPath={urllib.request.quote(datacenter_name)}"
+            f"&dsName={urllib.request.quote(ds_name)}"
+        )
+
+    def datastore_file_exists(self, datastore_path: str) -> bool:
+        """
+        Check whether a file exists on a vSphere datastore.
+
+        Args:
+            datastore_path: vSphere datastore path, e.g. '[DS1] isos/rhcos.iso'
+
+        Returns:
+            True if the file exists, False otherwise.
+        """
+        try:
+            parsed = self._parse_datastore_path(datastore_path)
+            if not parsed:
+                logger.warning(f"Invalid datastore path for existence check: {datastore_path}")
+                return False
+
+            ds_name, file_path = parsed
+            file_url = self._build_datastore_file_url(ds_name, file_path)
+            session_cookie = self._get_vsphere_session_cookie()
+            if not session_cookie:
+                logger.warning("No vSphere session cookie available for datastore file check")
+                return False
+
+            ssl_ctx = ssl._create_unverified_context()
+            req = urllib.request.Request(
+                file_url,
+                method='HEAD',
+                headers={'Cookie': session_cookie},
+            )
+            with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as resp:
+                return resp.status in (200, 204)
+
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                logger.debug(f"Datastore file not found: {datastore_path}")
+                return False
+            logger.warning(
+                f"HTTP error checking datastore file '{datastore_path}': {e.code} {e.reason}"
+            )
+            return False
+        except Exception as e:
+            logger.debug(f"Error checking datastore file '{datastore_path}': {e}")
+            return False
+
     def upload_iso_to_datastore(self, source_url: str, datastore_path: str) -> bool:
         """
         Download an ISO from *source_url* and upload it to the vSphere datastore.
@@ -282,33 +348,18 @@ class MediaOperations:
             True on success, False otherwise.
         """
         try:
-            # Parse '[DatastoreName] folder/file.iso'
-            if not (datastore_path.startswith('[') and ']' in datastore_path):
+            parsed = self._parse_datastore_path(datastore_path)
+            if not parsed:
                 logger.error(f"Invalid datastore path for upload: {datastore_path}")
                 return False
 
-            bracket_end = datastore_path.index(']')
-            ds_name = datastore_path[1:bracket_end].strip()
-            file_path = datastore_path[bracket_end + 1:].strip().lstrip('/')
-
+            ds_name, file_path = parsed
             content = self.connection.content
             if not content:
                 logger.error("No vSphere content available for ISO upload")
                 return False
 
-            # Resolve the datacenter and its name
-            datacenter_name = self._get_datacenter_name_for_datastore(content, ds_name)
-            if not datacenter_name:
-                logger.warning(f"Could not resolve datacenter for datastore '{ds_name}'; using 'ha-datacenter'")
-                datacenter_name = 'ha-datacenter'
-
-            # Build the vSphere datastore browser upload URL
-            vcenter_host = self.connection.host
-            upload_url = (
-                f"https://{vcenter_host}/folder/{urllib.request.pathname2url(file_path)}"
-                f"?dcPath={urllib.request.quote(datacenter_name)}"
-                f"&dsName={urllib.request.quote(ds_name)}"
-            )
+            upload_url = self._build_datastore_file_url(ds_name, file_path)
 
             logger.info(f"Uploading ISO from {source_url} to {datastore_path}")
 

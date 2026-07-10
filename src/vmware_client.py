@@ -56,6 +56,10 @@ def track_vmware_operation(operation_name):
                 self.connection.ensure_authenticated()
                 result = _execute()
                 duration = time.time() - start_time
+                if result is False:
+                    logger.error(f"❌ [{operation_name}] Failed for VM: {vm_name} after {duration:.3f}s")
+                    log_performance_metric(logger, operation_name, duration, False, vm_name=vm_name)
+                    return result
                 logger.info(f"✅ [{operation_name}] Completed for VM: {vm_name} in {duration:.3f}s")
                 log_performance_metric(logger, operation_name, duration, True, vm_name=vm_name)
                 return result
@@ -74,6 +78,10 @@ def track_vmware_operation(operation_name):
                     self._refresh_module_connections()
                     result = _execute()
                     duration = time.time() - start_time
+                    if result is False:
+                        logger.error(f"❌ [{operation_name}] Failed after reconnect for VM: {vm_name} after {duration:.3f}s")
+                        log_performance_metric(logger, operation_name, duration, False, vm_name=vm_name)
+                        return result
                     logger.info(f"✅ [{operation_name}] Completed after reconnect for VM: {vm_name} in {duration:.3f}s")
                     log_performance_metric(logger, operation_name, duration, True, vm_name=vm_name)
                     return result
@@ -232,6 +240,10 @@ class VMwareClient:
     def delete_datastore_file(self, datastore_path: str) -> bool:
         """Delete a file from a vSphere datastore."""
         return self.media_ops.delete_datastore_file(datastore_path)
+
+    def datastore_file_exists(self, datastore_path: str) -> bool:
+        """Check whether a file exists on a vSphere datastore."""
+        return self.media_ops.datastore_file_exists(datastore_path)
 
     @track_vmware_operation("Get ISO Status")
     def get_iso_status(self, vm_name):
