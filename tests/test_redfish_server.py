@@ -679,6 +679,44 @@ class SSLCertificateGenerationTests(unittest.TestCase):
                 os.unlink(config_path)
 
 
+class MediaOperationsBootOrderTests(unittest.TestCase):
+    def test_create_boot_devices_uses_hardware_device_keys(self):
+        try:
+            from pyVmomi import vim
+            from src.vmware.media_operations import MediaOperations
+        except ImportError:
+            self.skipTest("pyVmomi not installed")
+
+        from unittest.mock import MagicMock
+
+        cdrom = vim.vm.device.VirtualCdrom()
+        cdrom.key = 3000
+        disk = vim.vm.device.VirtualDisk()
+        disk.key = 2000
+        nic = vim.vm.device.VirtualEthernetCard()
+        nic.key = 4000
+
+        vm = MagicMock()
+        vm.config.hardware.device = [disk, cdrom, nic]
+
+        ops = MediaOperations(MagicMock(), MagicMock())
+        device_keys = ops._collect_boot_device_keys(vm)
+
+        self.assertEqual(device_keys['cdrom'], [3000])
+        self.assertEqual(device_keys['disk'], [2000])
+        self.assertEqual(device_keys['network'], [4000])
+
+        boot_devices = [
+            ops._create_boot_device(device_type, device_keys)
+            for device_type in ['cdrom', 'disk', 'network']
+        ]
+
+        self.assertEqual(len(boot_devices), 3)
+        self.assertEqual(boot_devices[0].deviceKey, 3000)
+        self.assertEqual(boot_devices[1].deviceKey, 2000)
+        self.assertEqual(boot_devices[2].deviceKey, 4000)
+
+
 class VMwareReconnectTests(unittest.TestCase):
     def test_get_vm_info_reconnects_on_not_authenticated(self):
         from unittest.mock import MagicMock

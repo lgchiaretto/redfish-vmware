@@ -26,6 +26,47 @@ class MediaOperations:
         """
         self.connection = connection
         self.vm_operations = vm_operations
+
+    def _collect_boot_device_keys(self, vm):
+        """Map boot device categories to hardware device keys on the VM."""
+        device_keys = {'cdrom': [], 'disk': [], 'network': []}
+        for device in vm.config.hardware.device:
+            if isinstance(device, vim.vm.device.VirtualCdrom):
+                device_keys['cdrom'].append(device.key)
+            elif isinstance(device, vim.vm.device.VirtualDisk):
+                device_keys['disk'].append(device.key)
+            elif isinstance(device, vim.vm.device.VirtualEthernetCard):
+                device_keys['network'].append(device.key)
+        return device_keys
+
+    def _create_boot_device(self, device_type, device_keys):
+        """Create a VMware boot device object bound to a real hardware device key."""
+        device_type_lower = device_type.lower()
+        if device_type_lower == 'cdrom':
+            keys = device_keys['cdrom']
+            if not keys:
+                return None
+            boot_device = vim.vm.BootOptions.BootableCdromDevice()
+            boot_device.deviceKey = keys[0]
+            return boot_device
+
+        if device_type_lower == 'disk':
+            keys = device_keys['disk']
+            if not keys:
+                return None
+            boot_device = vim.vm.BootOptions.BootableDiskDevice()
+            boot_device.deviceKey = keys[0]
+            return boot_device
+
+        if device_type_lower in ('network', 'pxe'):
+            keys = device_keys['network']
+            if not keys:
+                return None
+            boot_device = vim.vm.BootOptions.BootableEthernetDevice()
+            boot_device.deviceKey = keys[0]
+            return boot_device
+
+        return None
     
     def set_vm_boot_order(self, vm_name, boot_order):
         """
@@ -45,27 +86,36 @@ class MediaOperations:
                 return False
             
             logger.info(f"Setting boot order for VM '{vm_name}': {boot_order}")
-            
-            # Create boot options with requested device types
-            # pyVmomi boot device objects don't require explicit device keys
+
+            device_keys = self._collect_boot_device_keys(vm)
+            logger.debug(
+                "Boot device keys for VM '%s': cdrom=%s disk=%s network=%s",
+                vm_name,
+                device_keys['cdrom'],
+                device_keys['disk'],
+                device_keys['network'],
+            )
+
             boot_devices = []
             for device_type in boot_order:
-                device_type_lower = device_type.lower()
-                if device_type_lower == 'cdrom':
-                    boot_device = vim.vm.BootOptions.BootableCdromDevice()
-                    boot_devices.append(boot_device)
-                elif device_type_lower == 'disk':
-                    boot_device = vim.vm.BootOptions.BootableDiskDevice()
-                    boot_devices.append(boot_device)
-                elif device_type_lower in ['network', 'pxe']:
-                    boot_device = vim.vm.BootOptions.BootableEthernetDevice()
-                    boot_devices.append(boot_device)
+                boot_device = self._create_boot_device(device_type, device_keys)
+                if boot_device is None:
+                    logger.warning(
+                        "Skipping boot device type '%s' for VM '%s' — no matching hardware device found",
+                        device_type,
+                        vm_name,
+                    )
+                    continue
+                boot_devices.append(boot_device)
             
             if not boot_devices:
                 logger.error(f"No valid boot devices found for requested boot order: {boot_order}")
                 return False
             
-            logger.debug(f"Boot devices created: {[type(d).__name__ for d in boot_devices]}")
+            logger.debug(
+                "Boot devices created: %s",
+                [(type(d).__name__, getattr(d, 'deviceKey', None)) for d in boot_devices],
+            )
             
             # Configure boot options
             boot_spec = vim.vm.BootOptions()
