@@ -177,7 +177,7 @@ class SystemsHandlerPayloadTests(unittest.TestCase):
 class AuthManagerTests(unittest.TestCase):
     def _make_auth(self, config=None):
         from src.auth.manager import AuthenticationManager
-        return AuthenticationManager(config or {})
+        return AuthenticationManager(config or {}, enable_background_cleanup=False)
 
     def test_legacy_admin_password_always_accepted(self):
         auth = self._make_auth()
@@ -195,6 +195,64 @@ class AuthManagerTests(unittest.TestCase):
         })
         self.assertFalse(auth._check_credentials("user1", "wrong"))
         self.assertFalse(auth._check_credentials("hacker", "password"))
+
+    def test_cleanup_expired_sessions_removes_stale_session(self):
+        import time
+        auth = self._make_auth()
+        auth.session_timeout = 60
+        auth.create_session("admin")
+        session_id = next(iter(auth.sessions))
+        auth.sessions[session_id]["LastAccessTime"] = time.time() - 120
+
+        removed = auth.cleanup_expired_sessions()
+
+        self.assertEqual(removed, 1)
+        self.assertEqual(len(auth.sessions), 0)
+
+    def test_list_sessions_excludes_expired_sessions(self):
+        import time
+        auth = self._make_auth()
+        auth.session_timeout = 60
+        auth.create_session("admin")
+        session_id = next(iter(auth.sessions))
+        auth.sessions[session_id]["LastAccessTime"] = time.time() - 120
+
+        payload = auth.list_sessions()
+
+        self.assertEqual(payload["Members@odata.count"], 0)
+        self.assertEqual(payload["Members"], [])
+
+    def test_authenticate_request_cleans_up_expired_sessions(self):
+        import time
+        auth = self._make_auth()
+        auth.session_timeout = 60
+        auth.create_session("admin")
+        session_id = next(iter(auth.sessions))
+        auth.sessions[session_id]["LastAccessTime"] = time.time() - 120
+
+        class Req:
+            headers = {}
+
+        auth.authenticate_request(Req())
+
+        self.assertEqual(len(auth.sessions), 0)
+
+
+class HealthMonitorTests(unittest.TestCase):
+    def test_record_vm_operation_updates_stats(self):
+        from utils.health_monitor import ServerHealthMonitor
+
+        monitor = ServerHealthMonitor()
+        monitor.record_vm_operation("vm-1", "Get VM Info", success=True, duration=0.25)
+        monitor.record_vm_operation("vm-1", "Power On VM", success=False, duration=0.5)
+
+        stats = monitor.get_health_stats()
+
+        self.assertEqual(stats["total_operations"], 2)
+        self.assertEqual(stats["successful_operations"], 1)
+        self.assertEqual(stats["failed_operations"], 1)
+        self.assertEqual(stats["vm_statistics"]["vm-1"]["total_operations"], 2)
+        self.assertEqual(stats["vm_statistics"]["vm-1"]["last_operation"], "Power On VM")
 
 
 class SystemsPatchTests(unittest.TestCase):
@@ -269,6 +327,45 @@ class SystemsPatchTests(unittest.TestCase):
         req.rfile = io.BytesIO(body)
         handler._handle_secure_boot_patch(req, "vm-test", req.path)
         self.assertEqual(req.status_code, 501)
+
+
+class UpdateServiceHandlerTests(unittest.TestCase):
+    def _make_handler(self):
+        from src.handlers.update_service_handler import UpdateServiceHandler
+        return UpdateServiceHandler({}, {}, None)
+
+    def test_software_inventory_member_bmc_returns_200(self):
+        handler = self._make_handler()
+        req = FakeRequestHandler("/redfish/v1/UpdateService/SoftwareInventory/BMC")
+        handler.handle_get(req, req.path)
+        self.assertEqual(req.status_code, 200)
+        payload = json.loads(req.body.decode("utf-8"))
+        self.assertEqual(payload["Id"], "BMC")
+        self.assertEqual(payload["@odata.id"], "/redfish/v1/UpdateService/SoftwareInventory/BMC")
+
+    def test_software_inventory_member_redfish_server_returns_200(self):
+        handler = self._make_handler()
+        req = FakeRequestHandler("/redfish/v1/UpdateService/SoftwareInventory/RedfishServer")
+        handler.handle_get(req, req.path)
+        self.assertEqual(req.status_code, 200)
+        payload = json.loads(req.body.decode("utf-8"))
+        self.assertEqual(payload["Id"], "RedfishServer")
+        self.assertEqual(payload["@odata.id"], "/redfish/v1/UpdateService/SoftwareInventory/RedfishServer")
+
+    def test_software_inventory_collection_links_match_members(self):
+        handler = self._make_handler()
+        req = FakeRequestHandler("/redfish/v1/UpdateService/SoftwareInventory")
+        handler.handle_get(req, req.path)
+        self.assertEqual(req.status_code, 200)
+        payload = json.loads(req.body.decode("utf-8"))
+        member_ids = {member["@odata.id"] for member in payload["Members"]}
+        self.assertEqual(
+            member_ids,
+            {
+                "/redfish/v1/UpdateService/SoftwareInventory/BMC",
+                "/redfish/v1/UpdateService/SoftwareInventory/RedfishServer",
+            },
+        )
 
 
 class VirtualMediaHandlerTests(unittest.TestCase):

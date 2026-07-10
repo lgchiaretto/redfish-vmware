@@ -6,6 +6,7 @@ Handles Redfish authentication and session management.
 
 import base64
 import logging
+import threading
 import time
 from typing import Dict, Optional, Tuple
 
@@ -15,11 +16,40 @@ logger = logging.getLogger(__name__)
 class AuthenticationManager:
     """Manages authentication and sessions for Redfish server"""
     
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: Dict = None, enable_background_cleanup: bool = True):
         self.config = config or {}
         self.sessions = {}
         self.session_timeout = 600  # 10 minutes
+        self._cleanup_stop = threading.Event()
+        self._cleanup_thread = None
+        if enable_background_cleanup:
+            self._start_background_cleanup()
         logger.info("🔐 Authentication manager initialized")
+    
+    def _start_background_cleanup(self):
+        """Start a daemon thread that periodically removes expired sessions."""
+        interval = min(60, max(30, self.session_timeout // 2))
+
+        def cleanup_loop():
+            while not self._cleanup_stop.wait(interval):
+                try:
+                    removed = self.cleanup_expired_sessions()
+                    if removed:
+                        logger.debug(f"🧹 Background session cleanup removed {removed} expired session(s)")
+                except Exception as e:
+                    logger.debug(f"Session cleanup error: {e}")
+
+        self._cleanup_thread = threading.Thread(
+            target=cleanup_loop,
+            daemon=True,
+            name="SessionCleanup",
+        )
+        self._cleanup_thread.start()
+        logger.debug(f"🧹 Session cleanup monitor started (interval {interval}s)")
+
+    def shutdown(self):
+        """Stop background session cleanup."""
+        self._cleanup_stop.set()
     
     def authenticate_request(self, request_handler) -> Tuple[bool, Optional[str]]:
         """
@@ -31,6 +61,8 @@ class AuthenticationManager:
         Returns:
             Tuple of (is_authenticated, username)
         """
+        self.cleanup_expired_sessions()
+
         auth_header = request_handler.headers.get('Authorization')
         
         if not auth_header:
@@ -147,6 +179,7 @@ class AuthenticationManager:
     
     def list_sessions(self) -> Dict:
         """List all active sessions"""
+        self.cleanup_expired_sessions()
         return {
             '@odata.type': '#SessionCollection.SessionCollection',
             '@odata.id': '/redfish/v1/SessionService/Sessions',
@@ -161,8 +194,8 @@ class AuthenticationManager:
             ]
         }
     
-    def cleanup_expired_sessions(self):
-        """Remove expired sessions"""
+    def cleanup_expired_sessions(self) -> int:
+        """Remove expired sessions. Returns the number of sessions removed."""
         current_time = time.time()
         expired_sessions = []
         
@@ -174,3 +207,5 @@ class AuthenticationManager:
             username = self.sessions[session_id]['UserName']
             del self.sessions[session_id]
             logger.info(f"🧹 Expired session cleaned up for: {username} (ID: {session_id})")
+
+        return len(expired_sessions)

@@ -38,6 +38,15 @@ def _is_connection_error(exc):
     )
 
 
+def _record_health(vm_name, operation_name, success, duration):
+    """Record VMware operation metrics for the health endpoint."""
+    try:
+        from utils.health_monitor import health_monitor
+        health_monitor.record_vm_operation(vm_name, operation_name, success=success, duration=duration)
+    except Exception as e:
+        logger.debug(f"Could not record health stats: {e}")
+
+
 def track_vmware_operation(operation_name):
     """Decorator to track VMware operations with timing, logging and auto-reconnect on connection loss."""
     def decorator(func):
@@ -59,9 +68,11 @@ def track_vmware_operation(operation_name):
                 if result is False:
                     logger.error(f"❌ [{operation_name}] Failed for VM: {vm_name} after {duration:.3f}s")
                     log_performance_metric(logger, operation_name, duration, False, vm_name=vm_name)
+                    _record_health(vm_name, operation_name, False, duration)
                     return result
                 logger.info(f"✅ [{operation_name}] Completed for VM: {vm_name} in {duration:.3f}s")
                 log_performance_metric(logger, operation_name, duration, True, vm_name=vm_name)
+                _record_health(vm_name, operation_name, True, duration)
                 return result
 
             except Exception as e:
@@ -70,6 +81,7 @@ def track_vmware_operation(operation_name):
                     logger.error(f"❌ [{operation_name}] Failed for VM: {vm_name} after {duration:.3f}s: {e}")
                     log_performance_metric(logger, operation_name, duration, False,
                                          vm_name=vm_name, error=str(e))
+                    _record_health(vm_name, operation_name, False, duration)
                     raise
 
                 logger.warning(f"⚠️ [{operation_name}] Connection lost ({e}), reconnecting and retrying...")
@@ -81,15 +93,18 @@ def track_vmware_operation(operation_name):
                     if result is False:
                         logger.error(f"❌ [{operation_name}] Failed after reconnect for VM: {vm_name} after {duration:.3f}s")
                         log_performance_metric(logger, operation_name, duration, False, vm_name=vm_name)
+                        _record_health(vm_name, operation_name, False, duration)
                         return result
                     logger.info(f"✅ [{operation_name}] Completed after reconnect for VM: {vm_name} in {duration:.3f}s")
                     log_performance_metric(logger, operation_name, duration, True, vm_name=vm_name)
+                    _record_health(vm_name, operation_name, True, duration)
                     return result
                 except Exception as retry_e:
                     duration = time.time() - start_time
                     logger.error(f"❌ [{operation_name}] Failed after reconnect for VM: {vm_name} after {duration:.3f}s: {retry_e}")
                     log_performance_metric(logger, operation_name, duration, False,
                                          vm_name=vm_name, error=str(retry_e))
+                    _record_health(vm_name, operation_name, False, duration)
                     raise
 
         return wrapper

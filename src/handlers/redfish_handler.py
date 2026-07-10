@@ -343,7 +343,7 @@ class RedfishHandler:
         try:
             # Import here to avoid circular imports
             from handlers.http_handler import get_request_statistics
-            from redfish_server import health_monitor
+            from utils.health_monitor import health_monitor
             
             # Collect health data
             health_data = {
@@ -431,6 +431,7 @@ class RedfishHandler:
     def shutdown(self):
         """Shutdown the handler"""
         logger.info("🛑 Shutting down Redfish handler")
+        self.auth_manager.shutdown()
         self.task_manager.shutdown()
         self.vmware_client_pool.disconnect_all()
         self.vmware_clients.clear()

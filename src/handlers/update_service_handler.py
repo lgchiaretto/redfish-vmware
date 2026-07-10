@@ -42,6 +42,12 @@ class UpdateServiceHandler:
             # SoftwareInventory collection
             data = self._get_software_inventory()
             self._send_json_response(request_handler, 200, data)
+        elif path == '/redfish/v1/UpdateService/SoftwareInventory/BMC':
+            data = self._get_bmc_software()
+            self._send_json_response(request_handler, 200, data)
+        elif path == '/redfish/v1/UpdateService/SoftwareInventory/RedfishServer':
+            data = self._get_redfish_server_software()
+            self._send_json_response(request_handler, 200, data)
         else:
             self._send_error_response(request_handler, 404, "Not Found")
     
