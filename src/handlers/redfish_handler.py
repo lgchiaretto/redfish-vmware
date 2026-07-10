@@ -16,6 +16,7 @@ from auth.manager import AuthenticationManager
 from tasks.manager import TaskManager
 from models.redfish_schemas import RedfishModels
 from vmware.client_pool import VMwareClientPool
+from handlers.response_utils import RedfishResponseMixin
 from .systems_handler import SystemsHandler
 from .managers_handler import ManagersHandler
 from .chassis_handler import ChassisHandler
@@ -24,7 +25,7 @@ from .update_service_handler import UpdateServiceHandler
 logger = logging.getLogger(__name__)
 
 
-class RedfishHandler:
+class RedfishHandler(RedfishResponseMixin):
     """Main Redfish protocol handler"""
     
     def __init__(self, vm_configs, config=None):
@@ -307,16 +308,6 @@ class RedfishHandler:
             logger.error(f"❌ Status code: {status_code}")
             logger.error(f"❌ Data type: {type(data)}")
             raise
-    
-    def _send_error_response(self, request_handler, status_code, message):
-        """Send error response"""
-        error_data = {
-            "error": {
-                "code": f"Base.1.0.{status_code}",
-                "message": message
-            }
-        }
-        self._send_json_response(request_handler, status_code, error_data)
     
     def _send_auth_challenge(self, request_handler):
         """Send authentication challenge"""

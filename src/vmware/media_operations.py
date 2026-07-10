@@ -10,6 +10,8 @@ import urllib.request
 import urllib.error
 from pyVmomi import vim
 
+from vmware.task_utils import wait_for_task, wait_for_task_with_questions
+
 logger = logging.getLogger(__name__)
 
 
@@ -123,7 +125,7 @@ class MediaOperations:
             config_spec.bootOptions = boot_spec
             
             task = vm.Reconfigure(config_spec)
-            result = self._wait_for_task(task)
+            result = wait_for_task(task)
             
             if result:
                 logger.info(f"Successfully set boot order for VM '{vm_name}'")
@@ -182,7 +184,7 @@ class MediaOperations:
             config_spec.deviceChange = [cdrom_spec]
             
             task = vm.Reconfigure(config_spec)
-            result = self._wait_for_task(task)
+            result = wait_for_task(task)
             
             if result:
                 logger.info(f"Successfully mounted ISO '{iso_path}' to VM '{vm_name}'")
@@ -247,9 +249,9 @@ class MediaOperations:
             
             # For force eject, wait for task and handle any runtime questions
             if force:
-                result = self._wait_for_task_with_questions(task, vm, timeout=5)
+                result = wait_for_task_with_questions(task, vm, timeout=5)
             else:
-                result = self._wait_for_task(task, timeout=None)
+                result = wait_for_task(task, timeout=None)
             
             if result:
                 logger.info(f"Successfully unmounted ISO from VM '{vm_name}'")
@@ -258,7 +260,7 @@ class MediaOperations:
                 # If force eject timed out, try again with longer timeout
                 if force:
                     logger.warning(f"Force eject timed out for VM '{vm_name}', retrying with longer timeout...")
-                    result = self._wait_for_task_with_questions(task, vm, timeout=15)
+                    result = wait_for_task_with_questions(task, vm, timeout=15)
             
             return result
             
@@ -467,7 +469,7 @@ class MediaOperations:
 
             logger.info(f"Deleting datastore file: {datastore_path}")
             task = file_manager.DeleteFile(datastore_path, datacenter)
-            result = self._wait_for_task(task)
+            result = wait_for_task(task)
 
             if result:
                 logger.info(f"Successfully deleted datastore file: {datastore_path}")
@@ -515,92 +517,3 @@ class MediaOperations:
         except Exception as e:
             logger.error(f"Error getting ISO status for VM '{vm_name}': {e}")
             return {'inserted': False, 'image': None, 'connected': False}
-
-    def _wait_for_task(self, task, timeout=None):
-        """
-        Wait for a vCenter task to complete
-        
-        Args:
-            task: Task object
-            timeout: Maximum seconds to wait (None = no timeout)
-            
-        Returns:
-            True if task completed successfully, False otherwise
-        """
-        try:
-            import time
-            start_time = time.time()
-            
-            while task.info.state in ['running', 'queued']:
-                if timeout is not None:
-                    elapsed = time.time() - start_time
-                    if elapsed > timeout:
-                        logger.warning(f"Task timeout after {timeout}s in state '{task.info.state}'")
-                        return False
-                time.sleep(1)
-            
-            if task.info.state == 'success':
-                return True
-            else:
-                logger.error(f"Task failed: {task.info.error}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error waiting for task: {e}")
-            return False
-
-    def _wait_for_task_with_questions(self, task, vm, timeout=None):
-        """
-        Wait for a vCenter task to complete, handling any runtime questions.
-        Used for CD eject operations that may prompt for confirmation.
-        
-        Args:
-            task: Task object
-            vm: VM object to check for runtime questions
-            timeout: Maximum seconds to wait (None = no timeout)
-            
-        Returns:
-            True if task completed successfully, False otherwise
-        """
-        try:
-            import time
-            start_time = time.time()
-            
-            while task.info.state in ['running', 'queued']:
-                # Check for runtime questions and answer CD-related ones
-                if vm.runtime.question:
-                    question = vm.runtime.question
-                    question_text = question.text if hasattr(question, 'text') else str(question)
-                    logger.info(f"🤖 VM runtime question detected: {question_text}")
-                    
-                    # Check if this is a CD ejection question
-                    if 'cd' in question_text.lower() or 'cdrom' in question_text.lower() or 'dvd' in question_text.lower():
-                        logger.info(f"✅ Answering CD ejection question for VM")
-                        try:
-                            # vim.option.ChoiceOption stores choices in .choiceInfo (list of ElementDescription)
-                            # Each ElementDescription has a .key attribute to use as the answer
-                            if hasattr(question, 'choice') and hasattr(question.choice, 'choiceInfo') and question.choice.choiceInfo:
-                                answer = question.choice.choiceInfo[0].key
-                                vm.AnswerVM(question.id, answer)
-                                logger.info(f"✅ Answered CD ejection question with key: {answer}")
-                            else:
-                                logger.warning(f"No choices available in runtime question")
-                        except Exception as e:
-                            logger.warning(f"Could not answer runtime question: {e}")
-                
-                if timeout is not None:
-                    elapsed = time.time() - start_time
-                    if elapsed > timeout:
-                        logger.warning(f"Task timeout after {timeout}s in state '{task.info.state}'")
-                        return False
-                time.sleep(1)
-            
-            if task.info.state == 'success':
-                return True
-            else:
-                logger.error(f"Task failed: {task.info.error}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error waiting for task with questions: {e}")
-            return False

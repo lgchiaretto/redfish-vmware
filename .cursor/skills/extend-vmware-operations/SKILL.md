@@ -24,6 +24,8 @@ Choose the right module:
 - `media_operations.py` - ISO upload, mount/unmount, boot order, datastore delete
 
 ```python
+from vmware.task_utils import wait_for_task
+
 def new_operation(self, vm_name):
     try:
         vm = self.vm_operations.get_vm(vm_name)
@@ -33,7 +35,7 @@ def new_operation(self, vm_name):
 
         logger.info(f"Performing operation on VM '{vm_name}'")
         task = vm.ReconfigVM_Task(spec)
-        result = self._wait_for_task(task)
+        result = wait_for_task(task)
         return result
     except vim.fault.NotAuthenticated:
         raise  # CRITICAL: allows track_vmware_operation to reconnect and retry
@@ -72,7 +74,7 @@ else:
 
 1. **Always return bool** from VMware operations
 2. **Always handle `None` VM** (vm not found)
-3. **Use `_wait_for_task()`** for async pyVmomi tasks; `_wait_for_task_with_questions()` when vSphere may prompt (CD eject)
+3. **Use `wait_for_task()`** from `vmware.task_utils` for async pyVmomi tasks; `wait_for_task_with_questions()` when vSphere may prompt (CD eject)
 4. **Re-raise `vim.fault.NotAuthenticated`** before broad `except Exception` in every public method
 5. **Use the decorator** `@track_vmware_operation("name")` on facade methods
 6. **Log**: intent before, result after, errors with exception

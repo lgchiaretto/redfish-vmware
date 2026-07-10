@@ -979,5 +979,91 @@ class VMwareReconnectTests(unittest.TestCase):
         self.assertEqual(client.vm_ops.get_vm_info.call_count, 2)
 
 
+class ResponseUtilsTests(unittest.TestCase):
+    def test_send_json_response_sets_headers_and_body(self):
+        from src.handlers.response_utils import send_json_response
+
+        req = FakeRequestHandler("/redfish/v1/Systems")
+        send_json_response(req, 200, {"Id": "vm-1"})
+
+        self.assertEqual(req.status_code, 200)
+        self.assertEqual(req.response_headers["Content-Type"], "application/json")
+        payload = json.loads(req.body.decode())
+        self.assertEqual(payload["Id"], "vm-1")
+
+    def test_send_error_response_uses_redfish_error_shape(self):
+        from src.handlers.response_utils import send_error_response
+
+        req = FakeRequestHandler("/redfish/v1/Systems")
+        send_error_response(req, 404, "Not Found")
+
+        payload = json.loads(req.body.decode())
+        self.assertEqual(req.status_code, 404)
+        self.assertEqual(payload["error"]["code"], "Base.1.0.404")
+        self.assertEqual(payload["error"]["message"], "Not Found")
+
+    def test_mixin_error_response_uses_subclass_json_sender(self):
+        from src.handlers.response_utils import RedfishResponseMixin
+
+        class CustomHandler(RedfishResponseMixin):
+            def __init__(self):
+                self.json_calls = []
+
+            def _send_json_response(self, request_handler, status_code, data):
+                self.json_calls.append((status_code, data))
+
+        handler = CustomHandler()
+        req = FakeRequestHandler("/redfish/v1/Systems")
+        handler._send_error_response(req, 503, "Unavailable")
+
+        self.assertEqual(len(handler.json_calls), 1)
+        status_code, data = handler.json_calls[0]
+        self.assertEqual(status_code, 503)
+        self.assertEqual(data["error"]["message"], "Unavailable")
+
+
+class TaskUtilsTests(unittest.TestCase):
+    def test_wait_for_task_returns_true_on_success(self):
+        from unittest.mock import MagicMock, patch
+        from src.vmware.task_utils import wait_for_task
+
+        task = MagicMock()
+        task.info.state = 'success'
+
+        with patch('src.vmware.task_utils.time.sleep'):
+            self.assertTrue(wait_for_task(task))
+
+    def test_wait_for_task_returns_false_on_failure(self):
+        from unittest.mock import MagicMock, patch
+        from src.vmware.task_utils import wait_for_task
+
+        task = MagicMock()
+        task.info.state = 'error'
+        task.info.error = 'failed'
+
+        with patch('src.vmware.task_utils.time.sleep'):
+            self.assertFalse(wait_for_task(task))
+
+    def test_wait_for_task_with_questions_answers_cd_prompt(self):
+        from unittest.mock import MagicMock, PropertyMock, patch
+        from src.vmware.task_utils import wait_for_task_with_questions
+
+        task = MagicMock()
+        type(task.info).state = PropertyMock(side_effect=['running', 'success', 'success'])
+
+        question = MagicMock()
+        question.text = 'Remove CD-ROM from virtual machine?'
+        question.id = 'q1'
+        question.choice.choiceInfo = [MagicMock(key='yes')]
+
+        vm = MagicMock()
+        vm.runtime.question = question
+
+        with patch('src.vmware.task_utils.time.sleep'):
+            self.assertTrue(wait_for_task_with_questions(task, vm))
+
+        vm.AnswerVM.assert_called_once_with('q1', 'yes')
+
+
 if __name__ == "__main__":
     unittest.main()

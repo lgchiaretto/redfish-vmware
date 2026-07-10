@@ -4,16 +4,16 @@ Update Service Handler
 Handles Redfish UpdateService endpoints for firmware/software management.
 """
 
-import json
 import logging
 from typing import Dict
 
 from models.redfish_schemas import RedfishModels
+from handlers.response_utils import RedfishResponseMixin
 
 logger = logging.getLogger(__name__)
 
 
-class UpdateServiceHandler:
+class UpdateServiceHandler(RedfishResponseMixin):
     """Handler for Redfish UpdateService endpoints"""
     
     def __init__(self):
@@ -101,24 +101,3 @@ class UpdateServiceHandler:
             'Updateable': True,
             'ReleaseDate': '2024-08-16T00:00:00Z'
         }
-    
-    def _send_json_response(self, request_handler, status_code: int, data: Dict):
-        """Send JSON response"""
-        json_data = json.dumps(data, indent=2)
-        logger.debug(f"🔄 UpdateService Response {status_code}: {len(json_data)} bytes")
-        
-        request_handler.send_response(status_code)
-        request_handler.send_header('Content-Type', 'application/json')
-        request_handler.send_header('Content-Length', str(len(json_data)))
-        request_handler.end_headers()
-        request_handler.wfile.write(json_data.encode('utf-8'))
-    
-    def _send_error_response(self, request_handler, status_code: int, message: str):
-        """Send error response"""
-        error_data = {
-            "error": {
-                "code": f"Base.1.0.{status_code}",
-                "message": message
-            }
-        }
-        self._send_json_response(request_handler, status_code, error_data)

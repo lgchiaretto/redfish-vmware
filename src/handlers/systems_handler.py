@@ -4,16 +4,16 @@ Systems Handler
 Handles Redfish Computer Systems endpoints for VM management.
 """
 
-import json
 import logging
 from typing import Dict, Optional
 
 from models.redfish_schemas import RedfishModels
+from handlers.response_utils import RedfishResponseMixin
 
 logger = logging.getLogger(__name__)
 
 
-class SystemsHandler:
+class SystemsHandler(RedfishResponseMixin):
     """Handler for Redfish Systems endpoints"""
     
     def __init__(self, vm_configs: Dict, vmware_clients: Dict, task_manager):
@@ -576,22 +576,3 @@ class SystemsHandler:
             request_handler, 501,
             "SecureBoot configuration changes are not supported on VMware virtual machines"
         )
-
-    def _send_json_response(self, request_handler, status_code: int, data: Dict):
-        """Send JSON response"""
-        json_data = json.dumps(data, indent=2)
-        request_handler.send_response(status_code)
-        request_handler.send_header('Content-Type', 'application/json')
-        request_handler.send_header('Content-Length', str(len(json_data)))
-        request_handler.end_headers()
-        request_handler.wfile.write(json_data.encode('utf-8'))
-    
-    def _send_error_response(self, request_handler, status_code: int, message: str):
-        """Send error response"""
-        error_data = {
-            "error": {
-                "code": f"Base.1.0.{status_code}",
-                "message": message
-            }
-        }
-        self._send_json_response(request_handler, status_code, error_data)

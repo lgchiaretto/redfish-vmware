@@ -143,16 +143,17 @@ Environment variables:
 - One logger per module: `logger = logging.getLogger(__name__)`
 
 ### Response Pattern
-Every handler uses these two methods for ALL responses:
+Handlers inherit `RedfishResponseMixin` from `handlers/response_utils.py` for standard responses:
 ```python
 self._send_json_response(request_handler, 200, data)      # success
 self._send_error_response(request_handler, 404, "Not found")  # error
 ```
+`RedfishHandler` overrides `_send_json_response()` for enhanced Metal3 debug logging.
 
 ### VMware Operations
 - All VMware operations return `True` (success) or `False` (failure)
 - Always check for `None` VM before operating
-- Use `_wait_for_task()` for async pyVmomi tasks
+- Use `wait_for_task()` from `vmware.task_utils` for async pyVmomi tasks
 - Use the `@track_vmware_operation("name")` decorator on VMwareClient methods
 - **Auto-reconnect**: decorator catches `vim.fault.NotAuthenticated`, socket resets, broken pipe; reconnects and retries once
 - **Always re-raise** `vim.fault.NotAuthenticated` before broad `except Exception` in vmware/ modules
