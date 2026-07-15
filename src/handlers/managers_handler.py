@@ -386,10 +386,32 @@ class ManagersHandler(RedfishResponseMixin):
         return f"[{datastore}] {filename}"
 
     
+    def _get_primary_nic(self, vm_name: str) -> Dict:
+        """Return the primary NIC metadata for a VM, with a fallback when unavailable."""
+        client = self.vmware_clients.get(vm_name)
+        if client:
+            try:
+                vm_info = client.get_vm_info(vm_name) or {}
+                nics = vm_info.get('nics') or []
+                if nics:
+                    return nics[0]
+            except Exception as exc:
+                logger.debug(f"Could not retrieve NIC info for {vm_name}: {exc}")
+
+        return {
+            'mac': '00:50:56:00:00:00',
+            'label': 'Management Network Interface',
+            'connected': True,
+            'type': 'VirtualVmxnet3',
+        }
+
     def _handle_ethernet_interfaces_get(self, request_handler, manager_id: str, path: str):
         """Handle EthernetInterfaces GET requests"""
+        vm_name = manager_id.replace('-bmc', '') if manager_id.endswith('-bmc') else manager_id
+        primary_nic = self._get_primary_nic(vm_name)
+        mac = primary_nic.get('mac', '00:50:56:00:00:00')
+
         if path.endswith('/EthernetInterfaces'):
-            # EthernetInterfaces collection
             data = {
                 '@odata.type': '#EthernetInterfaceCollection.EthernetInterfaceCollection',
                 '@odata.id': f'/redfish/v1/Managers/{manager_id}/EthernetInterfaces',
@@ -404,22 +426,21 @@ class ManagersHandler(RedfishResponseMixin):
             }
             self._send_json_response(request_handler, 200, data)
         elif '/EthernetInterfaces/' in path:
-            # Individual ethernet interface
             interface_id = path.split('/')[-1]
             if interface_id == 'eth0':
                 data = {
                     '@odata.type': '#EthernetInterface.v1_6_0.EthernetInterface',
                     '@odata.id': f'/redfish/v1/Managers/{manager_id}/EthernetInterfaces/{interface_id}',
                     'Id': interface_id,
-                    'Name': 'Management Network Interface',
+                    'Name': primary_nic.get('label', 'Management Network Interface'),
                     'Description': f'Management Network Interface for {manager_id}',
                     'Status': {
                         'State': 'Enabled',
                         'Health': 'OK'
                     },
-                    'InterfaceEnabled': True,
-                    'PermanentMACAddress': '00:50:56:84:56:78',
-                    'MACAddress': '00:50:56:84:56:78',
+                    'InterfaceEnabled': bool(primary_nic.get('connected', True)),
+                    'PermanentMACAddress': mac,
+                    'MACAddress': mac,
                     'SpeedMbps': 1000,
                     'FullDuplex': True,
                     'HostName': f'{manager_id}.local',

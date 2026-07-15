@@ -88,19 +88,107 @@ class SystemsHandler(RedfishResponseMixin):
                 return parts[systems_index + 1]
         return None
     
+    def _get_vmware_info(self, vm_name: str) -> Dict:
+        """Return VMware VM info for a configured system, or an empty dict."""
+        vmware_client = self.vmware_clients.get(vm_name)
+        if not vmware_client:
+            return {}
+
+        try:
+            return vmware_client.get_vm_info(vm_name) or {}
+        except Exception as client_error:
+            logger.warning(f"Unable to retrieve VMware info for {vm_name}: {client_error}")
+            return {}
+
+    @staticmethod
+    def _drive_device_name(index: int) -> str:
+        """Map a disk index to a Linux device name used by rootDeviceHints."""
+        return f'/dev/vd{chr(ord("a") + index)}'
+
+    def _get_vm_nics(self, vm_name: str) -> list:
+        """Return NIC metadata for a VM, with a single fallback entry when unavailable."""
+        vm_info = self._get_vmware_info(vm_name)
+        nics = vm_info.get('nics') or []
+        if nics:
+            return nics
+
+        return [{
+            'mac': '00:50:56:00:00:00',
+            'label': 'Network adapter 1',
+            'connected': True,
+            'type': 'VirtualVmxnet3',
+        }]
+
+    def _get_vm_disks(self, vm_name: str) -> list:
+        """Return disk metadata for a VM, with a single fallback entry when unavailable."""
+        vm_info = self._get_vmware_info(vm_name)
+        disks = vm_info.get('disks') or []
+        if disks:
+            return disks
+
+        return [{
+            'label': 'Hard disk 1',
+            'capacity_bytes': 128 * (1024 ** 3),
+            'capacity_gb': 128,
+            'unit_number': 0,
+            'controller_key': 0,
+        }]
+
+    def _build_ethernet_interface_payload(self, vm_name: str, interface_id: str, nic: Dict) -> Dict:
+        """Build a Redfish EthernetInterface payload from VMware NIC metadata."""
+        mac = nic.get('mac', '00:50:56:00:00:00')
+        label = nic.get('label', f'Ethernet Interface {interface_id}')
+        return {
+            '@odata.type': '#EthernetInterface.v1_6_0.EthernetInterface',
+            '@odata.id': f'/redfish/v1/Systems/{vm_name}/EthernetInterfaces/{interface_id}',
+            'Id': interface_id,
+            'Name': label,
+            'Description': f'{label} for {vm_name}',
+            'Status': {
+                'State': 'Enabled',
+                'Health': 'OK',
+            },
+            'InterfaceEnabled': bool(nic.get('connected', True)),
+            'PermanentMACAddress': mac,
+            'MACAddress': mac,
+            'SpeedMbps': 10000,
+            'FullDuplex': True,
+            'LinkStatus': 'LinkUp' if nic.get('connected', True) else 'LinkDown',
+        }
+
+    def _build_drive_payload(self, vm_name: str, storage_id: str, drive_id: str, disk: Dict, index: int) -> Dict:
+        """Build a Redfish Drive payload from VMware disk metadata."""
+        device_name = self._drive_device_name(index)
+        capacity_bytes = disk.get('capacity_bytes') or 0
+        return {
+            '@odata.type': '#Drive.v1_7_0.Drive',
+            '@odata.id': f'/redfish/v1/Systems/{vm_name}/Storage/{storage_id}/Drives/{drive_id}',
+            'Id': drive_id,
+            'Name': device_name,
+            'Description': disk.get('label', f'Virtual disk {index + 1}'),
+            'Status': {
+                'State': 'Enabled',
+                'Health': 'OK',
+            },
+            'CapacityBytes': capacity_bytes,
+            'MediaType': 'SSD',
+            'Protocol': 'SATA',
+            'RotationSpeedRPM': 0,
+            'BlockSizeBytes': 512,
+            'SerialNumber': f'VMware-{vm_name}-{drive_id}',
+            'Identifiers': [
+                {
+                    'DurableNameFormat': 'NAA',
+                    'DurableName': f'VMware-{vm_name}-{index}',
+                }
+            ],
+        }
+
     def _get_system_info(self, vm_name: str) -> Dict:
         """Get a Redfish ComputerSystem payload for a VM."""
         try:
-            vmware_client = self.vmware_clients.get(vm_name)
-            vm_info = {}
+            vm_info = self._get_vmware_info(vm_name)
             power_state = 'Off'
-
-            if vmware_client:
-                try:
-                    vm_info = vmware_client.get_vm_info(vm_name) or {}
-                except Exception as client_error:
-                    logger.warning(f"⚠️  Unable to retrieve VMware info for {vm_name}: {client_error}")
-
             if vm_info:
                 power_state = RedfishModels.get_power_state_mapping().get(
                     vm_info.get('power_state', 'poweredOff'), 'Off'
@@ -278,7 +366,6 @@ class SystemsHandler(RedfishResponseMixin):
     def _handle_storage_get(self, request_handler, vm_name: str, path: str):
         """Handle Storage GET requests"""
         if path.endswith('/Storage'):
-            # Storage collection
             data = {
                 '@odata.type': '#StorageCollection.StorageCollection',
                 '@odata.id': f'/redfish/v1/Systems/{vm_name}/Storage',
@@ -292,15 +379,34 @@ class SystemsHandler(RedfishResponseMixin):
                 ]
             }
             self._send_json_response(request_handler, 200, data)
-        elif '/Storage/' in path and path.split('/')[-1].isdigit():
-            # Individual storage controller
-            storage_id = path.split('/')[-1]
+            return
+
+        storage_prefix = f'/redfish/v1/Systems/{vm_name}/Storage/1'
+        if path.startswith(f'{storage_prefix}/Drives/'):
+            drive_id = path.split('/')[-1]
+            disks = self._get_vm_disks(vm_name)
+            for index, disk in enumerate(disks):
+                if f'disk-{index}' == drive_id:
+                    data = self._build_drive_payload(vm_name, '1', drive_id, disk, index)
+                    self._send_json_response(request_handler, 200, data)
+                    return
+            self._send_error_response(request_handler, 404, "Drive not found")
+            return
+
+        if path == storage_prefix:
+            disks = self._get_vm_disks(vm_name)
+            drives = [
+                {
+                    '@odata.id': f'/redfish/v1/Systems/{vm_name}/Storage/1/Drives/disk-{index}'
+                }
+                for index in range(len(disks))
+            ]
             data = {
                 '@odata.type': '#Storage.v1_8_0.Storage',
-                '@odata.id': f'/redfish/v1/Systems/{vm_name}/Storage/{storage_id}',
-                'Id': storage_id,
+                '@odata.id': storage_prefix,
+                'Id': '1',
                 'Name': 'Storage Controller',
-                'Description': f'Storage Controller {storage_id} for {vm_name}',
+                'Description': f'Storage Controller 1 for {vm_name}',
                 'Status': {
                     'State': 'Enabled',
                     'Health': 'OK'
@@ -319,11 +425,12 @@ class SystemsHandler(RedfishResponseMixin):
                         'SpeedGbps': 6.0
                     }
                 ],
-                'Drives': []
+                'Drives': drives,
             }
             self._send_json_response(request_handler, 200, data)
-        else:
-            self._send_error_response(request_handler, 404, "Not Found")
+            return
+
+        self._send_error_response(request_handler, 404, "Not Found")
     
     def _handle_processors_get(self, request_handler, vm_name: str, path: str):
         """Handle Processors GET requests"""
@@ -365,17 +472,40 @@ class SystemsHandler(RedfishResponseMixin):
         )
 
     def _handle_ethernet_interfaces_get(self, request_handler, vm_name: str, path: str):
-        """Handle EthernetInterfaces GET requests"""
-        self._handle_related_collection_get(
-            request_handler,
-            vm_name,
-            path,
-            'EthernetInterfaces',
-            'EthernetInterface',
-            'Ethernet Interfaces Collection',
-            'EthernetInterface',
-            'Virtual Ethernet Interface',
-        )
+        """Handle EthernetInterfaces GET requests with real VMware NIC metadata."""
+        collection_path = f'/redfish/v1/Systems/{vm_name}/EthernetInterfaces'
+        if path == collection_path:
+            nics = self._get_vm_nics(vm_name)
+            data = {
+                '@odata.type': '#EthernetInterfaceCollection.EthernetInterfaceCollection',
+                '@odata.id': collection_path,
+                'Name': 'Ethernet Interfaces Collection',
+                'Description': f'Ethernet Interfaces collection for {vm_name}',
+                'Members@odata.count': len(nics),
+                'Members': [
+                    {
+                        '@odata.id': f'{collection_path}/{index + 1}'
+                    }
+                    for index in range(len(nics))
+                ],
+            }
+            self._send_json_response(request_handler, 200, data)
+            return
+
+        if path.startswith(f'{collection_path}/'):
+            interface_id = path.split('/')[-1]
+            nics = self._get_vm_nics(vm_name)
+            if interface_id.isdigit():
+                index = int(interface_id) - 1
+                if 0 <= index < len(nics):
+                    data = self._build_ethernet_interface_payload(vm_name, interface_id, nics[index])
+                    self._send_json_response(request_handler, 200, data)
+                    return
+
+            self._send_error_response(request_handler, 404, "Interface not found")
+            return
+
+        self._send_error_response(request_handler, 404, "Not Found")
 
     def _handle_related_collection_get(self, request_handler, vm_name: str, path: str, collection_name: str, member_type: str, collection_label: str, member_schema: str, member_description: str):
         """Serve Redfish collection and member resources for related system subpaths."""

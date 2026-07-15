@@ -1,6 +1,6 @@
 [Unit]
 Description=Redfish VMware Server - OpenShift Virtualization
-Documentation=https://github.com/lchiaret/redfish-vmware-server
+Documentation=https://github.com/lgchiaretto/redfish-vmware
 After=network.target network-online.target
 Wants=network-online.target
 

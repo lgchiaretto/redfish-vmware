@@ -96,6 +96,61 @@ class VMOperations:
             logger.error(f"Error listing VMs: {e}")
             return []
     
+    def _collect_nics(self, vm):
+        """Collect virtual NIC details from a VM hardware configuration."""
+        nics = []
+        if not vm.config or not vm.config.hardware:
+            return nics
+
+        for device in vm.config.hardware.device:
+            if not isinstance(device, vim.vm.device.VirtualEthernetCard):
+                continue
+
+            mac = getattr(device, 'macAddress', None)
+            if not mac:
+                continue
+
+            nic_type = type(device).__name__
+            connected = False
+            if device.connectable:
+                connected = bool(device.connectable.connected)
+
+            nics.append({
+                'mac': mac.upper(),
+                'label': device.deviceInfo.label if device.deviceInfo else f'Network adapter {len(nics) + 1}',
+                'connected': connected,
+                'type': nic_type,
+            })
+
+        return nics
+
+    def _collect_disks(self, vm):
+        """Collect virtual disk details from a VM hardware configuration."""
+        disks = []
+        if not vm.config or not vm.config.hardware:
+            return disks
+
+        for device in vm.config.hardware.device:
+            if not isinstance(device, vim.vm.device.VirtualDisk):
+                continue
+
+            capacity_kb = device.capacityInKB if device.capacityInKB else 0
+            capacity_bytes = capacity_kb * 1024
+            unit_number = device.unitNumber if device.unitNumber is not None else len(disks)
+            controller_key = device.controllerKey if device.controllerKey is not None else 0
+            disk_label = device.deviceInfo.label if device.deviceInfo else f'Hard disk {len(disks) + 1}'
+
+            disks.append({
+                'label': disk_label,
+                'capacity_bytes': capacity_bytes,
+                'capacity_gb': round(capacity_bytes / (1024 ** 3), 2),
+                'unit_number': unit_number,
+                'controller_key': controller_key,
+            })
+
+        disks.sort(key=lambda disk: (disk['controller_key'], disk['unit_number']))
+        return disks
+
     def get_vm_info(self, vm_name):
         """
         Get detailed VM information
@@ -121,7 +176,9 @@ class VMOperations:
                 'guest_ip': vm.guest.ipAddress if vm.guest else None,
                 'guest_hostname': vm.guest.hostName if vm.guest else None,
                 'uuid': vm.config.uuid if vm.config else None,
-                'instance_uuid': vm.config.instanceUuid if vm.config else None
+                'instance_uuid': vm.config.instanceUuid if vm.config else None,
+                'nics': self._collect_nics(vm),
+                'disks': self._collect_disks(vm),
             }
             
         except vim.fault.NotAuthenticated:

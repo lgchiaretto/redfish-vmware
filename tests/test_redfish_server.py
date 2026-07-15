@@ -159,7 +159,6 @@ class SystemsHandlerPayloadTests(unittest.TestCase):
             ("/redfish/v1/Systems/vm-test/Processors", "Processors"),
             ("/redfish/v1/Systems/vm-test/Memory", "Memory"),
             ("/redfish/v1/Systems/vm-test/NetworkInterfaces", "NetworkInterfaces"),
-            ("/redfish/v1/Systems/vm-test/EthernetInterfaces", "EthernetInterfaces"),
         ]
 
         for path, expected_key in test_cases:
@@ -172,6 +171,140 @@ class SystemsHandlerPayloadTests(unittest.TestCase):
                 self.assertEqual(payload["Name"], f"{expected_key} Collection")
                 self.assertEqual(payload["Members@odata.count"], 1)
                 self.assertEqual(payload["Members"][0]["@odata.id"], f"{path}/1")
+
+
+class ZtpReadinessTests(unittest.TestCase):
+    def _make_handler(self, vm_info=None):
+        class FakeClient:
+            def get_vm_info(self, vm_name):
+                return vm_info or {}
+
+        return SystemsHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {"vm-test": FakeClient()} if vm_info is not None else {},
+            None,
+        )
+
+    def test_ethernet_interfaces_include_mac_from_vmware(self):
+        handler = self._make_handler({
+            "power_state": "poweredOn",
+            "nics": [{
+                "mac": "00:50:56:84:8C:23",
+                "label": "Network adapter 1",
+                "connected": True,
+                "type": "VirtualVmxnet3",
+            }],
+        })
+        path = "/redfish/v1/Systems/vm-test/EthernetInterfaces/1"
+        request_handler = FakeRequestHandler(path)
+        handler.handle_get(request_handler, path)
+
+        self.assertEqual(request_handler.status_code, 200)
+        payload = json.loads(request_handler.body.decode("utf-8"))
+        self.assertEqual(payload["MACAddress"], "00:50:56:84:8C:23")
+        self.assertEqual(payload["PermanentMACAddress"], "00:50:56:84:8C:23")
+
+    def test_ethernet_interfaces_collection_count_matches_nics(self):
+        handler = self._make_handler({
+            "nics": [
+                {"mac": "00:50:56:84:8C:23", "label": "NIC 1", "connected": True, "type": "VirtualVmxnet3"},
+                {"mac": "00:50:56:84:8C:24", "label": "NIC 2", "connected": True, "type": "VirtualVmxnet3"},
+            ],
+        })
+        path = "/redfish/v1/Systems/vm-test/EthernetInterfaces"
+        request_handler = FakeRequestHandler(path)
+        handler.handle_get(request_handler, path)
+
+        self.assertEqual(request_handler.status_code, 200)
+        payload = json.loads(request_handler.body.decode("utf-8"))
+        self.assertEqual(payload["Members@odata.count"], 2)
+        self.assertEqual(len(payload["Members"]), 2)
+
+    def test_storage_drives_populated_from_vmware(self):
+        handler = self._make_handler({
+            "disks": [{
+                "label": "Hard disk 1",
+                "capacity_bytes": 128 * (1024 ** 3),
+                "capacity_gb": 128,
+                "unit_number": 0,
+                "controller_key": 1000,
+            }],
+        })
+        path = "/redfish/v1/Systems/vm-test/Storage/1"
+        request_handler = FakeRequestHandler(path)
+        handler.handle_get(request_handler, path)
+
+        self.assertEqual(request_handler.status_code, 200)
+        payload = json.loads(request_handler.body.decode("utf-8"))
+        self.assertEqual(len(payload["Drives"]), 1)
+        self.assertEqual(payload["Drives"][0]["@odata.id"], "/redfish/v1/Systems/vm-test/Storage/1/Drives/disk-0")
+
+    def test_storage_drive_individual_get(self):
+        handler = self._make_handler({
+            "disks": [{
+                "label": "Hard disk 1",
+                "capacity_bytes": 128 * (1024 ** 3),
+                "capacity_gb": 128,
+                "unit_number": 0,
+                "controller_key": 1000,
+            }],
+        })
+        path = "/redfish/v1/Systems/vm-test/Storage/1/Drives/disk-0"
+        request_handler = FakeRequestHandler(path)
+        handler.handle_get(request_handler, path)
+
+        self.assertEqual(request_handler.status_code, 200)
+        payload = json.loads(request_handler.body.decode("utf-8"))
+        self.assertEqual(payload["Name"], "/dev/vda")
+        self.assertEqual(payload["CapacityBytes"], 128 * (1024 ** 3))
+        self.assertEqual(payload["MediaType"], "SSD")
+
+    def test_ethernet_interfaces_fallback_without_vmware(self):
+        handler = self._make_handler(vm_info=None)
+        collection_path = "/redfish/v1/Systems/vm-test/EthernetInterfaces"
+        request_handler = FakeRequestHandler(collection_path)
+        handler.handle_get(request_handler, collection_path)
+
+        self.assertEqual(request_handler.status_code, 200)
+        payload = json.loads(request_handler.body.decode("utf-8"))
+        self.assertEqual(payload["Members@odata.count"], 1)
+
+        member_path = "/redfish/v1/Systems/vm-test/EthernetInterfaces/1"
+        member_request = FakeRequestHandler(member_path)
+        handler.handle_get(member_request, member_path)
+        self.assertEqual(member_request.status_code, 200)
+        member_payload = json.loads(member_request.body.decode("utf-8"))
+        self.assertEqual(member_payload["MACAddress"], "00:50:56:00:00:00")
+
+
+class ManagersHandlerZtpTests(unittest.TestCase):
+    def test_manager_ethernet_interface_uses_primary_nic_mac(self):
+        from src.handlers.managers_handler import ManagersHandler
+
+        class FakeClient:
+            def get_vm_info(self, vm_name):
+                return {
+                    "nics": [{
+                        "mac": "00:50:56:84:8C:99",
+                        "label": "Network adapter 1",
+                        "connected": True,
+                        "type": "VirtualVmxnet3",
+                    }],
+                }
+
+        handler = ManagersHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {"vm-test": FakeClient()},
+            {},
+        )
+        path = "/redfish/v1/Managers/vm-test-bmc/EthernetInterfaces/eth0"
+        request_handler = FakeRequestHandler(path)
+        handler.handle_get(request_handler, path)
+
+        self.assertEqual(request_handler.status_code, 200)
+        payload = json.loads(request_handler.body.decode("utf-8"))
+        self.assertEqual(payload["MACAddress"], "00:50:56:84:8C:99")
+        self.assertEqual(payload["PermanentMACAddress"], "00:50:56:84:8C:99")
 
 
 class AuthManagerTests(unittest.TestCase):
@@ -844,7 +977,7 @@ class MediaOperationsBootOrderTests(unittest.TestCase):
         ]
 
         self.assertEqual(len(boot_devices), 3)
-        self.assertEqual(type(boot_devices[0]).__name__, 'BootableCdromDevice')
+        self.assertEqual(type(boot_devices[0]).__name__.split('.')[-1], 'BootableCdromDevice')
         self.assertEqual(boot_devices[1].deviceKey, 2000)
         self.assertEqual(boot_devices[2].deviceKey, 4000)
 
@@ -876,7 +1009,7 @@ class MediaOperationsBootOrderTests(unittest.TestCase):
 
         self.assertEqual(len(boot_devices), 3)
         self.assertEqual(boot_devices[0].deviceKey, 2000)
-        self.assertEqual(type(boot_devices[1]).__name__, 'BootableCdromDevice')
+        self.assertEqual(type(boot_devices[1]).__name__.split('.')[-1], 'BootableCdromDevice')
         self.assertEqual(boot_devices[2].deviceKey, 4000)
 
 
