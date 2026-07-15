@@ -6,53 +6,60 @@ alwaysApply: true
 # Redfish-VMware Bridge - Project Context
 
 ## What This Project Does
-Translates Redfish REST API calls into VMware vSphere operations. Built for OpenShift Metal3/Ironic to manage VMware VMs as bare metal hosts.
+Translates Redfish REST API calls into VMware vSphere operations. Built for OpenShift Metal3/Ironic to manage VMware VMs as bare metal hosts. Architecture prioritizes Metal3 compatibility over generic Redfish compliance.
 
 ## Architecture
 
-- **One Redfish HTTP server per VM**, each on its own port (8440-8444+)
-- All servers share a single `RedfishHandler` that coordinates operations
+- **Single Redfish HTTP(S) server for all VMs** on top-level `redfish_port` (or `REDFISH_PORT` env var)
+- VM selection via URI path: `/redfish/v1/Systems/{ID}` — one port, many VMs
+- `datacenter_folders` config enables auto-discovery with periodic refresh (`FolderRefreshMonitor`)
+- `RedfishHandler.refresh_vm_configs()` updates handler registries after discovery refresh
 - Entry point: `src/redfish_server.py --config config/config.json`
+- Production install via `setup.sh` (Python env, systemd, firewall, VMware validation)
 
 ## File Organization
 
 ```
 src/
-  redfish_server.py          # Entry point, multi-server startup
-  vmware_client.py           # Unified VMware API facade
+  redfish_server.py          # Entry point, config load, folder refresh loop
+  vmware_client.py           # Unified VMware API facade (auto-reconnect decorator)
   handlers/
-    redfish_handler.py       # Main request router (GET/POST/PATCH/DELETE)
+    redfish_handler.py       # Main request router + refresh_vm_configs()
     http_handler.py          # Base HTTP handler with auth
-    systems_handler.py       # VM power, boot, BIOS, storage
-    managers_handler.py      # BMC, virtual media
+    systems_handler.py       # ComputerSystem, sub-resources, boot PATCH
+    managers_handler.py      # BMC, virtual media insert/eject/upload
     chassis_handler.py       # Physical chassis
     update_service_handler.py # Firmware/software inventory
   vmware/
-    connection.py            # vSphere connection (pyVmomi)
-    vm_operations.py         # VM discovery, info
+    connection.py            # vSphere connection, reconnect(), is_connection_alive()
+    vm_operations.py         # VM discovery, info, folder listing
     power_operations.py      # Power on/off/reset
-    media_operations.py      # ISO mount, boot order
-  auth/manager.py            # Basic auth (admin/password)
+    media_operations.py      # ISO upload, mount, unmount, boot order, datastore delete
+  auth/manager.py            # Basic auth, per-VM credentials, session tokens
   tasks/manager.py           # Async task tracking for Metal3
   models/redfish_schemas.py  # Redfish JSON response builders
   utils/logging_config.py    # Logging setup
 config/
-  config.json                # VM definitions and vCenter credentials
-  config.json.example        # Template config
-openshift/                   # BareMetalHost YAML examples
+  config.json                # VM definitions, vCenter credentials, feature flags
+  config.json.example        # Reference configuration with all supported keys
+  redfish-vmware-server.service  # SystemD unit file
+tests/
+  test_redfish_server.py     # Automated regression suite
+openshift/                   # BareMetalHost YAML examples and testing guide
 ```
 
 ## Critical Conventions
 
 1. **Python 3.11+** required
-2. **Logging**: use `logger = logging.getLogger(__name__)` per module
+2. **Logging**: use `logger = logging.getLogger(__name__)` per module; emoji prefixes (🚀 ✅ ❌ 🤖)
 3. **Error responses**: always use `_send_error_response(handler, status_code, message)`
 4. **Success responses**: always use `_send_json_response(handler, status_code, data)`
 5. **VMware operations** return `True/False` - handlers translate to HTTP codes
 6. **Redfish responses** must include `@odata.type`, `@odata.id`, proper schema versions
-7. **Auth**: fixed credentials `admin:password`, public endpoints: `/redfish/v1/` and `/redfish/v1/Systems`
-8. **No automated tests exist** - test manually with curl or via Metal3 integration
+7. **Auth**: legacy `admin:password` + per-VM `(redfish_user, redfish_password)` pairs; public: `/redfish/v1/` and `/redfish/v1/Systems` (GET)
+8. **Automated tests** in `tests/test_redfish_server.py` — run with `PYTHONPATH=. python3 -m unittest tests.test_redfish_server`
 9. **Config**: never commit `config/config.json` (contains credentials)
+10. **VMware auto-reconnect**: re-raise `vim.fault.NotAuthenticated` before broad except in vmware/ modules
 
 ## Running the Application
 
@@ -65,6 +72,9 @@ sudo systemctl start redfish-vmware-server
 
 # Debug mode
 REDFISH_DEBUG=true python3 src/redfish_server.py --config config/config.json
+
+# Tests
+PYTHONPATH=. python3 -m unittest tests.test_redfish_server
 ```
 
 ## Dependencies
@@ -72,4 +82,5 @@ REDFISH_DEBUG=true python3 src/redfish_server.py --config config/config.json
 - `pyvmomi` - VMware vSphere API
 - `psutil` - System monitoring
 - `pyyaml` - YAML support
+- `requests` - HTTP client (ISO download)
 - Standard library: `http.server`, `ssl`, `threading`, `json`

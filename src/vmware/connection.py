@@ -8,6 +8,7 @@ import ssl
 import logging
 import atexit
 from pyVim.connect import SmartConnect, Disconnect
+from pyVmomi import vim
 
 logger = logging.getLogger(__name__)
 
@@ -60,14 +61,65 @@ class VMwareConnection:
                 self.content = self.service_instance.RetrieveContent()
                 logger.info(f"Successfully connected to {self.host}")
                 
-                # Register disconnect function
-                atexit.register(self.disconnect)
+                # Register disconnect function (only on first connect)
+                if not getattr(self, '_atexit_registered', False):
+                    atexit.register(self.disconnect)
+                    self._atexit_registered = True
             else:
                 raise Exception("Failed to connect to vSphere")
                 
         except Exception as e:
             logger.error(f"Error connecting to VMware: {e}")
             raise
+
+    def reconnect(self):
+        """Reconnect to VMware vSphere after session expiry"""
+        logger.info(f"🔄 Reconnecting to {self.host}...")
+        try:
+            # Try to cleanly disconnect first
+            try:
+                if self.service_instance:
+                    Disconnect(self.service_instance)
+            except Exception:
+                pass
+            self.service_instance = None
+            self.content = None
+            
+            self.connect()
+            logger.info(f"✅ Reconnected successfully to {self.host}")
+        except Exception as e:
+            logger.error(f"❌ Reconnect failed for {self.host}: {e}")
+            raise
+
+    def ensure_authenticated(self):
+        """Check session is alive; reconnect if not authenticated."""
+        if not self.service_instance:
+            self.reconnect()
+            return
+
+        try:
+            self.service_instance.CurrentTime()
+        except vim.fault.NotAuthenticated:
+            logger.warning(f"⚠️ Session expired for {self.host}, reconnecting...")
+            self.reconnect()
+        except Exception as e:
+            err_str = str(e)
+            if 'NotAuthenticated' in err_str or 'not authenticated' in err_str.lower():
+                logger.warning(f"⚠️ Session expired for {self.host}, reconnecting...")
+                self.reconnect()
+            else:
+                raise
+
+    def is_connection_alive(self):
+        """Check if the connection is alive and responsive."""
+        try:
+            if not self.service_instance:
+                return False
+            self.service_instance.CurrentTime()
+            return True
+        except Exception as e:
+            logger.debug(f"Connection check failed for {self.host}: {e}")
+            return False
     
     def disconnect(self):
         """Disconnect from VMware vSphere"""
@@ -81,11 +133,3 @@ class VMwareConnection:
     def is_connected(self):
         """Check if connection is active"""
         return self.service_instance is not None
-    
-    def get_service_instance(self):
-        """Get the service instance"""
-        return self.service_instance
-    
-    def get_content(self):
-        """Get the content object"""
-        return self.content

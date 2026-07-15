@@ -4,21 +4,20 @@ Chassis Handler
 Handles Redfish Chassis endpoints for physical/virtual chassis management.
 """
 
-import json
 import logging
 from typing import Dict, Optional
 
 from models.redfish_schemas import RedfishModels
+from handlers.response_utils import RedfishResponseMixin
 
 logger = logging.getLogger(__name__)
 
 
-class ChassisHandler:
+class ChassisHandler(RedfishResponseMixin):
     """Handler for Redfish Chassis endpoints"""
     
-    def __init__(self, vm_configs: Dict, vmware_clients: Dict):
+    def __init__(self, vm_configs: Dict):
         self.vm_configs = vm_configs
-        self.vmware_clients = vmware_clients
         logger.info("🏗️ Chassis handler initialized")
     
     def handle_get(self, request_handler, path: str):
@@ -367,22 +366,3 @@ class ChassisHandler:
             self._send_json_response(request_handler, 200, data)
         else:
             self._send_error_response(request_handler, 404, "Not Found")
-    
-    def _send_json_response(self, request_handler, status_code: int, data: Dict):
-        """Send JSON response"""
-        json_data = json.dumps(data, indent=2)
-        request_handler.send_response(status_code)
-        request_handler.send_header('Content-Type', 'application/json')
-        request_handler.send_header('Content-Length', str(len(json_data)))
-        request_handler.end_headers()
-        request_handler.wfile.write(json_data.encode('utf-8'))
-    
-    def _send_error_response(self, request_handler, status_code: int, message: str):
-        """Send error response"""
-        error_data = {
-            "error": {
-                "code": f"Base.1.0.{status_code}",
-                "message": message
-            }
-        }
-        self._send_json_response(request_handler, status_code, error_data)

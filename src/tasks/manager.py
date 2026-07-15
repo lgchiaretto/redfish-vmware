@@ -125,20 +125,6 @@ class TaskManager:
         logger.info(f"📝 Created task: {name} (ID: {task_id})")
         return task_id
     
-    def update_task_progress(self, task_id: str, percent_complete: int, message: str = None):
-        """Update task progress"""
-        with self.task_lock:
-            if task_id in self.tasks:
-                self.tasks[task_id]['PercentComplete'] = percent_complete
-                if message:
-                    self.tasks[task_id]['Messages'].append({
-                        'MessageId': 'TaskProgress',
-                        'Message': message,
-                        'Severity': 'OK',
-                        'Timestamp': datetime.now(tz=timezone.utc).isoformat()
-                    })
-                logger.debug(f"📊 Task {task_id} progress: {percent_complete}%")
-    
     def complete_task(self, task_id: str, message: str = None, success: bool = True):
         """Mark task as completed"""
         with self.task_lock:

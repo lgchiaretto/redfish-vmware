@@ -9,11 +9,12 @@ import logging
 from typing import Dict, Optional
 
 from models.redfish_schemas import RedfishModels
+from handlers.response_utils import RedfishResponseMixin
 
 logger = logging.getLogger(__name__)
 
 
-class SystemsHandler:
+class SystemsHandler(RedfishResponseMixin):
     """Handler for Redfish Systems endpoints"""
     
     def __init__(self, vm_configs: Dict, vmware_clients: Dict, task_manager):
@@ -36,6 +37,14 @@ class SystemsHandler:
                     self._handle_bios_get(request_handler, vm_name, path)
                 elif '/Storage' in path:
                     self._handle_storage_get(request_handler, vm_name, path)
+                elif '/Processors' in path:
+                    self._handle_processors_get(request_handler, vm_name, path)
+                elif '/Memory' in path:
+                    self._handle_memory_get(request_handler, vm_name, path)
+                elif '/NetworkInterfaces' in path:
+                    self._handle_network_interfaces_get(request_handler, vm_name, path)
+                elif '/EthernetInterfaces' in path:
+                    self._handle_ethernet_interfaces_get(request_handler, vm_name, path)
                 elif '/SecureBoot' in path:
                     self._handle_secure_boot_get(request_handler, vm_name, path)
                 else:
@@ -80,37 +89,51 @@ class SystemsHandler:
         return None
     
     def _get_system_info(self, vm_name: str) -> Dict:
-        """Get system information for a VM"""
+        """Get a Redfish ComputerSystem payload for a VM."""
         try:
-            # Get VM power state
             vmware_client = self.vmware_clients.get(vm_name)
+            vm_info = {}
+            power_state = 'Off'
+
             if vmware_client:
-                vm_info = vmware_client.get_vm_info(vm_name)
+                try:
+                    vm_info = vmware_client.get_vm_info(vm_name) or {}
+                except Exception as client_error:
+                    logger.warning(f"⚠️  Unable to retrieve VMware info for {vm_name}: {client_error}")
+
+            if vm_info:
                 power_state = RedfishModels.get_power_state_mapping().get(
                     vm_info.get('power_state', 'poweredOff'), 'Off'
                 )
-            else:
-                power_state = 'Off'
-            
+
+            cpu_count = vm_info.get('cpu_count', 0) or 0
+            memory_mb = vm_info.get('memory_mb', 0) or 0
+            memory_gib = max(1, int(round(memory_mb / 1024))) if memory_mb else 0
+            guest_hostname = vm_info.get('guest_hostname') or vm_info.get('guest_ip') or f'{vm_name}.local'
+            uuid = vm_info.get('uuid') or vm_info.get('instance_uuid') or f'00000000-0000-0000-0000-{vm_name[-12:].ljust(12, "0")}'
+
             return {
                 '@odata.type': '#ComputerSystem.v1_13_0.ComputerSystem',
                 '@odata.id': f'/redfish/v1/Systems/{vm_name}',
                 'Id': vm_name,
-                'Name': f'System {vm_name}',
-                'Description': f'VMware VM {vm_name}',
+                'Name': vm_name,
+                'Description': f'VMware virtual machine {vm_name}',
+                'SystemType': 'Virtual',
+                'AssetTag': 'VMware-Bridge',
+                'IndicatorLED': 'Off',
                 'Status': {
                     'State': 'Enabled',
                     'Health': 'OK'
                 },
                 'PowerState': power_state,
-                'BiosVersion': '2.0.0',
+                'BiosVersion': 'Virtual BIOS',
                 'Manufacturer': 'VMware',
                 'Model': 'Virtual Machine',
                 'SKU': 'VMware VM',
                 'SerialNumber': f'VMware-{vm_name}',
                 'PartNumber': 'VMware-System',
-                'UUID': f'424d4f4e-{vm_name[-8:].ljust(8, "0")}-{vm_name[-4:].ljust(4, "0")}-{vm_name[-4:].ljust(4, "0")}-{vm_name[-12:].ljust(12, "0")}',
-                'HostName': f'{vm_name}.local',
+                'UUID': uuid,
+                'HostName': guest_hostname,
                 'Boot': {
                     'BootSourceOverrideEnabled': 'Disabled',
                     'BootSourceOverrideTarget': 'None',
@@ -127,6 +150,50 @@ class SystemsHandler:
                 'Storage': {
                     '@odata.id': f'/redfish/v1/Systems/{vm_name}/Storage'
                 },
+                'EthernetInterfaces': {
+                    '@odata.id': f'/redfish/v1/Systems/{vm_name}/EthernetInterfaces'
+                },
+                'Processors': {
+                    '@odata.id': f'/redfish/v1/Systems/{vm_name}/Processors'
+                },
+                'Memory': {
+                    '@odata.id': f'/redfish/v1/Systems/{vm_name}/Memory'
+                },
+                'NetworkInterfaces': {
+                    '@odata.id': f'/redfish/v1/Systems/{vm_name}/NetworkInterfaces'
+                },
+                'ProcessorSummary': {
+                    'Count': cpu_count,
+                    'Model': 'Virtual CPU',
+                    'Status': {
+                        'State': 'Enabled',
+                        'Health': 'OK'
+                    }
+                },
+                'MemorySummary': {
+                    'TotalSystemMemoryGiB': memory_gib,
+                    'Status': {
+                        'State': 'Enabled',
+                        'Health': 'OK'
+                    }
+                },
+                'MemoryDomains': [
+                    {
+                        'Name': 'System Memory',
+                        'MemoryType': 'DRAM',
+                        'CapacityMiB': max(1024, memory_mb)
+                    }
+                ],
+                'TrustedModules': [
+                    {
+                        'FirmwareVersion': '1.0.0',
+                        'InterfaceType': 'TPM1_2',
+                        'Status': {
+                            'State': 'Enabled',
+                            'Health': 'OK'
+                        }
+                    }
+                ],
                 'Actions': {
                     '#ComputerSystem.Reset': {
                         'target': f'/redfish/v1/Systems/{vm_name}/Actions/ComputerSystem.Reset',
@@ -145,7 +212,35 @@ class SystemsHandler:
                         {
                             '@odata.id': f'/redfish/v1/Managers/{vm_name}-bmc'
                         }
-                    ]
+                    ],
+                    'Processors': [
+                        {
+                            '@odata.id': f'/redfish/v1/Systems/{vm_name}/Processors'
+                        }
+                    ],
+                    'Memory': [
+                        {
+                            '@odata.id': f'/redfish/v1/Systems/{vm_name}/Memory'
+                        }
+                    ],
+                    'NetworkInterfaces': [
+                        {
+                            '@odata.id': f'/redfish/v1/Systems/{vm_name}/NetworkInterfaces'
+                        }
+                    ],
+                    'EthernetInterfaces': [
+                        {
+                            '@odata.id': f'/redfish/v1/Systems/{vm_name}/EthernetInterfaces'
+                        }
+                    ],
+                    'ComputerSystems': []
+                },
+                'Oem': {
+                    'VMware': {
+                        'VMName': vm_name,
+                        'GuestOS': vm_info.get('guest_os', 'Unknown'),
+                        'ToolsStatus': vm_info.get('tools_status', 'toolsNotInstalled')
+                    }
                 }
             }
         except Exception as e:
@@ -230,6 +325,95 @@ class SystemsHandler:
         else:
             self._send_error_response(request_handler, 404, "Not Found")
     
+    def _handle_processors_get(self, request_handler, vm_name: str, path: str):
+        """Handle Processors GET requests"""
+        self._handle_related_collection_get(
+            request_handler,
+            vm_name,
+            path,
+            'Processors',
+            'Processor',
+            'Processors Collection',
+            'Processor',
+            'CPU Processor',
+        )
+
+    def _handle_memory_get(self, request_handler, vm_name: str, path: str):
+        """Handle Memory GET requests"""
+        self._handle_related_collection_get(
+            request_handler,
+            vm_name,
+            path,
+            'Memory',
+            'Memory',
+            'Memory Collection',
+            'Memory',
+            'System Memory',
+        )
+
+    def _handle_network_interfaces_get(self, request_handler, vm_name: str, path: str):
+        """Handle NetworkInterfaces GET requests"""
+        self._handle_related_collection_get(
+            request_handler,
+            vm_name,
+            path,
+            'NetworkInterfaces',
+            'NetworkInterface',
+            'Network Interfaces Collection',
+            'NetworkInterface',
+            'Virtual Network Interface',
+        )
+
+    def _handle_ethernet_interfaces_get(self, request_handler, vm_name: str, path: str):
+        """Handle EthernetInterfaces GET requests"""
+        self._handle_related_collection_get(
+            request_handler,
+            vm_name,
+            path,
+            'EthernetInterfaces',
+            'EthernetInterface',
+            'Ethernet Interfaces Collection',
+            'EthernetInterface',
+            'Virtual Ethernet Interface',
+        )
+
+    def _handle_related_collection_get(self, request_handler, vm_name: str, path: str, collection_name: str, member_type: str, collection_label: str, member_schema: str, member_description: str):
+        """Serve Redfish collection and member resources for related system subpaths."""
+        if path.endswith(f'/{collection_name}'):
+            data = {
+                '@odata.type': '#Collection.Collection',
+                '@odata.id': f'/redfish/v1/Systems/{vm_name}/{collection_name}',
+                'Id': collection_name,
+                'Name': f'{collection_name} Collection',
+                'Description': f'{collection_name} collection for {vm_name}',
+                'Members@odata.count': 1,
+                'Members': [
+                    {
+                        '@odata.id': f'/redfish/v1/Systems/{vm_name}/{collection_name}/1'
+                    }
+                ]
+            }
+            self._send_json_response(request_handler, 200, data)
+            return
+
+        if '/' in path and path.split('/')[-1].isdigit():
+            member_id = path.split('/')[-1]
+            data = {
+                '@odata.type': f'#{member_schema}.v1_0_0.{member_schema}',
+                '@odata.id': path,
+                'Id': member_id,
+                'Name': f'{member_type} {member_id}',
+                'Description': f'{member_description} {member_id} for {vm_name}',
+                'Status': {
+                    'State': 'Enabled',
+                    'Health': 'OK'
+                }
+            }
+            self._send_json_response(request_handler, 200, data)
+            return
+
+        self._send_error_response(request_handler, 404, "Not Found")
+
     def _handle_secure_boot_get(self, request_handler, vm_name: str, path: str):
         """Handle SecureBoot GET requests"""
         if path.endswith('/SecureBoot'):
@@ -314,107 +498,82 @@ class SystemsHandler:
             logger.error(f"❌ Power action error for {vm_name}: {e}")
             self._send_error_response(request_handler, 500, "Internal Server Error")
     
+    # Redfish BootSourceOverrideTarget -> VMware boot-order device names
+    _BOOT_TARGET_MAP = {
+        'Cd':       ['cdrom', 'disk', 'network'],
+        'Pxe':      ['network', 'disk', 'cdrom'],
+        'Hdd':      ['disk', 'cdrom', 'network'],
+        'Usb':      ['disk', 'cdrom', 'network'],
+        'BiosSetup': ['disk', 'cdrom', 'network'],
+        'None':     ['disk', 'cdrom', 'network'],
+    }
+
     def _handle_system_patch(self, request_handler, vm_name: str, path: str):
-        """Handle system PATCH requests"""
+        """Handle system PATCH requests — applies boot-order changes via VMware."""
         try:
             content_length = int(request_handler.headers.get('Content-Length', 0))
-            if content_length > 0:
-                patch_data = request_handler.rfile.read(content_length)
-                data = json.loads(patch_data.decode('utf-8'))
-                
-                # Handle boot configuration changes
-                if 'Boot' in data:
-                    boot_config = data['Boot']
-                    logger.info(f"🥾 Boot configuration change for {vm_name}: {boot_config}")
-                    
-                    # For now, just acknowledge the change
-                    request_handler.send_response(200)
-                    request_handler.send_header('Content-Type', 'application/json')
-                    request_handler.end_headers()
-                    
-                    response = {
-                        '@odata.type': '#ComputerSystem.v1_13_0.ComputerSystem',
-                        'Id': vm_name,
-                        'Boot': boot_config
-                    }
-                    request_handler.wfile.write(json.dumps(response).encode('utf-8'))
-                else:
-                    self._send_error_response(request_handler, 400, "No supported properties to patch")
-            else:
+            if not content_length:
                 self._send_error_response(request_handler, 400, "Missing patch data")
+                return
+
+            patch_data = request_handler.rfile.read(content_length)
+            data = json.loads(patch_data.decode('utf-8'))
+
+            if 'Boot' not in data:
+                self._send_error_response(request_handler, 400, "No supported properties to patch")
+                return
+
+            boot_config = data['Boot']
+            logger.info(f"🥾 Boot configuration change for {vm_name}: {boot_config}")
+
+            target = boot_config.get('BootSourceOverrideTarget')
+            enabled = boot_config.get('BootSourceOverrideEnabled', 'Once')
+
+            if target and target != 'None':
+                boot_order = self._BOOT_TARGET_MAP.get(target, ['disk', 'cdrom', 'network'])
+                vmware_client = self.vmware_clients.get(vm_name)
+                if vmware_client:
+                    success = vmware_client.set_vm_boot_order(vm_name, boot_order)
+                    if not success:
+                        logger.warning(f"⚠️  VMware boot order change failed for {vm_name}, continuing")
+                else:
+                    logger.warning(f"⚠️  No VMware client available for {vm_name}; boot order not applied")
+
+            # Return the updated system object so Metal3 can verify the change
+            updated = self._get_system_info(vm_name)
+            updated['Boot']['BootSourceOverrideTarget'] = target or 'None'
+            updated['Boot']['BootSourceOverrideEnabled'] = enabled
+            self._send_json_response(request_handler, 200, updated)
+
+        except json.JSONDecodeError as e:
+            self._send_error_response(request_handler, 400, f"Invalid JSON: {e}")
         except Exception as e:
             logger.error(f"❌ System PATCH error for {vm_name}: {e}")
             self._send_error_response(request_handler, 500, "Internal Server Error")
-    
+
     def _handle_bios_patch(self, request_handler, vm_name: str, path: str):
-        """Handle BIOS PATCH requests"""
-        try:
-            content_length = int(request_handler.headers.get('Content-Length', 0))
-            if content_length > 0:
-                patch_data = request_handler.rfile.read(content_length)
-                data = json.loads(patch_data.decode('utf-8'))
-                
-                logger.info(f"🔧 BIOS configuration change for {vm_name}: {data}")
-                
-                # For now, just acknowledge the change
-                request_handler.send_response(200)
-                request_handler.send_header('Content-Type', 'application/json')
-                request_handler.end_headers()
-                
-                response = {
-                    '@odata.type': '#Bios.v1_1_0.Bios',
-                    'Id': 'BIOS',
-                    'Attributes': data.get('Attributes', {})
-                }
-                request_handler.wfile.write(json.dumps(response).encode('utf-8'))
-            else:
-                self._send_error_response(request_handler, 400, "Missing patch data")
-        except Exception as e:
-            logger.error(f"❌ BIOS PATCH error for {vm_name}: {e}")
-            self._send_error_response(request_handler, 500, "Internal Server Error")
-    
+        """Handle BIOS PATCH requests.
+
+        VMware does not expose BIOS attribute configuration through the vSphere API.
+        Return 501 so clients know the operation is not supported rather than
+        silently pretending the change was applied.
+        """
+        logger.info(f"🔧 BIOS PATCH requested for {vm_name} — not supported on VMware")
+        self._send_error_response(
+            request_handler, 501,
+            "BIOS attribute configuration is not supported on VMware virtual machines"
+        )
+
     def _handle_secure_boot_patch(self, request_handler, vm_name: str, path: str):
-        """Handle SecureBoot PATCH requests"""
-        try:
-            content_length = int(request_handler.headers.get('Content-Length', 0))
-            if content_length > 0:
-                patch_data = request_handler.rfile.read(content_length)
-                data = json.loads(patch_data.decode('utf-8'))
-                
-                logger.info(f"🔒 SecureBoot configuration change for {vm_name}: {data}")
-                
-                # For now, just acknowledge the change
-                request_handler.send_response(200)
-                request_handler.send_header('Content-Type', 'application/json')
-                request_handler.end_headers()
-                
-                response = {
-                    '@odata.type': '#SecureBoot.v1_1_0.SecureBoot',
-                    'Id': 'SecureBoot',
-                    'SecureBootEnable': data.get('SecureBootEnable', True)
-                }
-                request_handler.wfile.write(json.dumps(response).encode('utf-8'))
-            else:
-                self._send_error_response(request_handler, 400, "Missing patch data")
-        except Exception as e:
-            logger.error(f"❌ SecureBoot PATCH error for {vm_name}: {e}")
-            self._send_error_response(request_handler, 500, "Internal Server Error")
-    
-    def _send_json_response(self, request_handler, status_code: int, data: Dict):
-        """Send JSON response"""
-        json_data = json.dumps(data, indent=2)
-        request_handler.send_response(status_code)
-        request_handler.send_header('Content-Type', 'application/json')
-        request_handler.send_header('Content-Length', str(len(json_data)))
-        request_handler.end_headers()
-        request_handler.wfile.write(json_data.encode('utf-8'))
-    
-    def _send_error_response(self, request_handler, status_code: int, message: str):
-        """Send error response"""
-        error_data = {
-            "error": {
-                "code": f"Base.1.0.{status_code}",
-                "message": message
-            }
-        }
-        self._send_json_response(request_handler, status_code, error_data)
+        """Handle SecureBoot PATCH requests.
+
+        VMware SecureBoot state is part of the VM firmware configuration and
+        cannot be changed while the VM is running. Changing it also requires
+        a VM power cycle which is disruptive and is not performed automatically.
+        Return 501 so clients know this is not supported.
+        """
+        logger.info(f"🔒 SecureBoot PATCH requested for {vm_name} — not supported on VMware")
+        self._send_error_response(
+            request_handler, 501,
+            "SecureBoot configuration changes are not supported on VMware virtual machines"
+        )

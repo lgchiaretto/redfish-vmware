@@ -10,13 +10,13 @@ Routes requests to appropriate handlers and manages the overall Redfish protocol
 import json
 import logging
 import time
-from typing import Dict, Optional
-from urllib.parse import urlparse, parse_qs
+from typing import Dict
 
 from auth.manager import AuthenticationManager
 from tasks.manager import TaskManager
 from models.redfish_schemas import RedfishModels
-from vmware_client import VMwareClient
+from vmware.client_pool import VMwareClientPool
+from handlers.response_utils import RedfishResponseMixin
 from .systems_handler import SystemsHandler
 from .managers_handler import ManagersHandler
 from .chassis_handler import ChassisHandler
@@ -25,13 +25,14 @@ from .update_service_handler import UpdateServiceHandler
 logger = logging.getLogger(__name__)
 
 
-class RedfishHandler:
+class RedfishHandler(RedfishResponseMixin):
     """Main Redfish protocol handler"""
     
     def __init__(self, vm_configs, config=None):
         self.vm_configs = {vm['name']: vm for vm in vm_configs}
         self.config = config or {}
-        self.vmware_clients = {}
+        self.vmware_client_pool = VMwareClientPool(self.config)
+        self.vmware_clients = self.vmware_client_pool.sync_vm_clients(self.vm_configs)
         
         # Initialize components
         self.auth_manager = AuthenticationManager(config)
@@ -39,24 +40,29 @@ class RedfishHandler:
         
         # Initialize handlers
         self.systems_handler = SystemsHandler(self.vm_configs, self.vmware_clients, self.task_manager)
-        self.managers_handler = ManagersHandler(self.vm_configs, self.vmware_clients)
-        self.chassis_handler = ChassisHandler(self.vm_configs, self.vmware_clients)
-        self.update_service_handler = UpdateServiceHandler(self.vm_configs, self.vmware_clients, self.task_manager)
-        
-        # Initialize VMware clients for each VM
-        for vm_name, vm_config in self.vm_configs.items():
-            try:
-                self.vmware_clients[vm_name] = VMwareClient(
-                    vm_config['vcenter_host'],
-                    vm_config['vcenter_user'],
-                    vm_config['vcenter_password'],
-                    disable_ssl=vm_config.get('disable_ssl', True)
-                )
-                logger.info(f"✅ VMware client initialized for VM: {vm_name}")
-            except Exception as e:
-                logger.error(f"❌ Failed to initialize VMware client for {vm_name}: {e}")
+        self.managers_handler = ManagersHandler(self.vm_configs, self.vmware_clients, self.config)
+        self.chassis_handler = ChassisHandler(self.vm_configs)
+        self.update_service_handler = UpdateServiceHandler()
         
         logger.info(f"🚀 Redfish handler initialized for {len(self.vm_configs)} VMs")
+
+    def refresh_vm_configs(self, vm_configs, config=None):
+        """Refresh the handler's VM registry and VMware clients after dynamic discovery updates."""
+        self.config = config or self.config
+        refreshed_vm_configs = [vm for vm in vm_configs if isinstance(vm, dict) and 'name' in vm]
+        self.vm_configs = {vm['name']: vm for vm in refreshed_vm_configs}
+
+        self.systems_handler.vm_configs = self.vm_configs
+        self.managers_handler.vm_configs = self.vm_configs
+        self.managers_handler.config = self.config
+        self.chassis_handler.vm_configs = self.vm_configs
+
+        self.vmware_clients = self.vmware_client_pool.sync_vm_clients(self.vm_configs, self.config)
+
+        self.systems_handler.vmware_clients = self.vmware_clients
+        self.managers_handler.vmware_clients = self.vmware_clients
+
+        logger.info(f"🔄 Refreshed Redfish handler for {len(self.vm_configs)} VMs")
     
     def handle_get_request(self, request_handler):
         """Handle GET requests with enhanced Metal3/Ironic logging"""
@@ -166,6 +172,8 @@ class RedfishHandler:
         # Route to specific handlers
         if path.startswith('/redfish/v1/Systems'):
             self.systems_handler.handle_post(request_handler, path)
+        elif path.startswith('/redfish/v1/Managers'):
+            self.managers_handler.handle_post(request_handler, path)
         elif path.startswith('/redfish/v1/SessionService/Sessions'):
             self._handle_session_creation(request_handler)
         else:
@@ -301,16 +309,6 @@ class RedfishHandler:
             logger.error(f"❌ Data type: {type(data)}")
             raise
     
-    def _send_error_response(self, request_handler, status_code, message):
-        """Send error response"""
-        error_data = {
-            "error": {
-                "code": f"Base.1.0.{status_code}",
-                "message": message
-            }
-        }
-        self._send_json_response(request_handler, status_code, error_data)
-    
     def _send_auth_challenge(self, request_handler):
         """Send authentication challenge"""
         request_handler.send_response(401)
@@ -333,7 +331,7 @@ class RedfishHandler:
         try:
             # Import here to avoid circular imports
             from handlers.http_handler import get_request_statistics
-            from redfish_server import health_monitor
+            from utils.health_monitor import health_monitor
             
             # Collect health data
             health_data = {
@@ -421,12 +419,7 @@ class RedfishHandler:
     def shutdown(self):
         """Shutdown the handler"""
         logger.info("🛑 Shutting down Redfish handler")
+        self.auth_manager.shutdown()
         self.task_manager.shutdown()
-        
-        # Disconnect VMware clients
-        for vm_name, client in self.vmware_clients.items():
-            try:
-                client.disconnect()
-                logger.info(f"🔌 Disconnected VMware client for: {vm_name}")
-            except Exception as e:
-                logger.error(f"❌ Error disconnecting VMware client for {vm_name}: {e}")
+        self.vmware_client_pool.disconnect_all()
+        self.vmware_clients.clear()

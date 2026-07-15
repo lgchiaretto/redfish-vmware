@@ -273,18 +273,17 @@ EOF
 setup_firewall() {
     print_info "Setting up firewall rules..."
     
-    # Extract ports from config
+    # Extract ports from config (prefer top-level 'redfish_port')
     local config_file="$PROJECT_ROOT/config/config.json"
     local ports=$(python3 -c "
 import json
 config = json.load(open('$config_file'))
-ports = [str(vm.get('redfish_port', 8443)) for vm in config['vms']]
-print(' '.join(ports))
+print(str(config.get('redfish_port', 8443)))
 " 2>/dev/null)
     
     if [[ -z "$ports" ]]; then
-        print_warning "Could not extract ports from config, using default range 8443-8450"
-        ports="8443 8444 8445 8446 8447 8448 8449 8450"
+        print_warning "Could not extract port from config, using default 8443"
+        ports="8443"
     fi
     
     # Check if firewalld is active
@@ -367,10 +366,7 @@ start_and_test_service() {
     local first_port=$(python3 -c "
 import json
 config = json.load(open('$config_file'))
-if config['vms']:
-    print(config['vms'][0].get('redfish_port', 8443))
-else:
-    print(8443)
+print(config.get('redfish_port', 8443))
 " 2>/dev/null)
     
     # Test service root endpoint
@@ -399,11 +395,11 @@ show_usage_examples() {
     local vm_info=$(python3 -c "
 import json
 config = json.load(open('$config_file'))
-if config['vms']:
-    vm = config['vms'][0]
-    print(f\"{vm['name']}:{vm.get('redfish_port', 8443)}\")
+port = config.get('redfish_port', 8443)
+if config.get('vms'):
+    print(f\"{config['vms'][0]['name']}:{port}\")
 else:
-    print('vm-name:8443')
+    print(f'vm-name:{port}')
 " 2>/dev/null)
     
     local vm_name=$(echo "$vm_info" | cut -d: -f1)

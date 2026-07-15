@@ -7,6 +7,10 @@ Handles VM power management operations.
 import logging
 import time
 
+from pyVmomi import vim
+
+from vmware.task_utils import wait_for_task
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,7 +50,7 @@ class PowerOperations:
             
             logger.info(f"Powering on VM '{vm_name}'")
             task = vm.PowerOn()
-            result = self._wait_for_task(task)
+            result = wait_for_task(task)
             
             if result:
                 logger.info(f"Successfully powered on VM '{vm_name}'")
@@ -55,6 +59,8 @@ class PowerOperations:
             
             return result
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error powering on VM '{vm_name}': {e}")
             return False
@@ -81,7 +87,7 @@ class PowerOperations:
             
             logger.info(f"Powering off VM '{vm_name}'")
             task = vm.PowerOff()
-            result = self._wait_for_task(task)
+            result = wait_for_task(task)
             
             if result:
                 logger.info(f"Successfully powered off VM '{vm_name}'")
@@ -90,6 +96,8 @@ class PowerOperations:
             
             return result
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error powering off VM '{vm_name}': {e}")
             return False
@@ -116,7 +124,7 @@ class PowerOperations:
             
             logger.info(f"Resetting VM '{vm_name}'")
             task = vm.Reset()
-            result = self._wait_for_task(task)
+            result = wait_for_task(task)
             
             if result:
                 logger.info(f"Successfully reset VM '{vm_name}'")
@@ -125,6 +133,8 @@ class PowerOperations:
             
             return result
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error resetting VM '{vm_name}': {e}")
             return False
@@ -169,6 +179,8 @@ class PowerOperations:
             logger.warning(f"Graceful shutdown timed out for '{vm_name}', forcing power off")
             return self.power_off_vm(vm_name)
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error shutting down VM '{vm_name}': {e}")
             return False
@@ -218,30 +230,8 @@ class PowerOperations:
             logger.warning(f"Restart verification timed out for '{vm_name}', but command was sent")
             return True
             
+        except vim.fault.NotAuthenticated:
+            raise
         except Exception as e:
             logger.error(f"Error restarting VM '{vm_name}': {e}")
-            return False
-    
-    def _wait_for_task(self, task):
-        """
-        Wait for a vCenter task to complete
-        
-        Args:
-            task: Task object
-            
-        Returns:
-            True if task completed successfully, False otherwise
-        """
-        try:
-            while task.info.state in ['running', 'queued']:
-                time.sleep(1)
-            
-            if task.info.state == 'success':
-                return True
-            else:
-                logger.error(f"Task failed: {task.info.error}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error waiting for task: {e}")
             return False

@@ -299,10 +299,6 @@ class RedfishRequestHandler(BaseHTTPRequestHandler):
             
             self._log_request_end('DELETE', start_time, 500)
             self.send_error(500, "Internal Server Error")
-    
-    def get_request_stats(self):
-        """Get current request statistics"""
-        return request_tracker.get_stats()
 
 
 def get_request_statistics():

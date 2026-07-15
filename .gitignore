@@ -46,6 +46,7 @@ Thumbs.db
 # Configuration files with sensitive data
 config/config.json.backup
 config/*.secret
+config/config.json
 *.key
 *.pem
 
