@@ -286,7 +286,11 @@ class ManagersHandler(RedfishResponseMixin):
 
         success = vmware_client.mount_iso(vm_name, iso_path)
         if not success:
-            self._send_error_response(request_handler, 500, "Failed to mount ISO")
+            self._send_error_response(
+                request_handler,
+                500,
+                "Failed to mount ISO (VM may lack a CD/DVD device, or the datastore ISO path is invalid)",
+            )
             return
 
         self._set_media_state(vm_name, media_id, inserted=True, image=image_url, write_protected=write_protected, connected=True)
