@@ -131,6 +131,9 @@ class VMwareClient:
         self.host = host
         self.user = user
         self.port = port
+        # Short TTL cache for GET /Systems polling (Metal3 ~10s interval)
+        self._vm_info_cache = {}
+        self._vm_info_cache_ttl = 5.0
 
         if disable_ssl is not None:
             disable_ssl_verification = disable_ssl
@@ -155,6 +158,13 @@ class VMwareClient:
             logger.error(f"❌ Failed to initialize VMware client for {host}: {e}")
             logger.debug("📍 Connection error details:", exc_info=True)
             raise
+
+    def invalidate_vm_info_cache(self, vm_name=None):
+        """Drop cached VM info so the next GET reflects live power/firmware state."""
+        if vm_name is None:
+            self._vm_info_cache.clear()
+            return
+        self._vm_info_cache.pop(vm_name, None)
 
     def _refresh_module_connections(self):
         """Propagate a new connection object to all operation modules after reconnect."""
@@ -186,9 +196,29 @@ class VMwareClient:
         logger.info(f"📊 Found {len(vms)} VMs on {self.host}")
         return vms
 
-    @track_vmware_operation("Get VM Info")
     def get_vm_info(self, vm_name):
-        """Get detailed VM information"""
+        """Get detailed VM information (5s TTL cache for Metal3 polling)."""
+        now = time.monotonic()
+        cached = self._vm_info_cache.get(vm_name)
+        if cached is not None:
+            cached_at, vm_info = cached
+            if (now - cached_at) < self._vm_info_cache_ttl:
+                logger.debug(
+                    f"♻️ Using cached VM info for {vm_name} "
+                    f"(age={(now - cached_at):.2f}s)"
+                )
+                return vm_info
+
+        vm_info = self._fetch_vm_info(vm_name)
+        if vm_info is not None:
+            self._vm_info_cache[vm_name] = (now, vm_info)
+        else:
+            self._vm_info_cache.pop(vm_name, None)
+        return vm_info
+
+    @track_vmware_operation("Get VM Info")
+    def _fetch_vm_info(self, vm_name):
+        """Fetch live VM information from vCenter."""
         vm_info = self.vm_ops.get_vm_info(vm_name)
         if vm_info:
             logger.info(f"✅ VM info retrieved for {vm_name}: Power={vm_info.get('power_state', 'unknown')}")
@@ -196,30 +226,37 @@ class VMwareClient:
             logger.warning(f"⚠️ VM not found: {vm_name}")
         return vm_info
 
+    def _power_and_invalidate(self, operation, vm_name):
+        """Run a power operation and invalidate the VM info cache on success."""
+        result = operation(vm_name)
+        if result:
+            self.invalidate_vm_info_cache(vm_name)
+        return result
+
     @track_vmware_operation("Power On VM")
     def power_on_vm(self, vm_name):
         """Power on a virtual machine"""
-        return self.power_ops.power_on_vm(vm_name)
+        return self._power_and_invalidate(self.power_ops.power_on_vm, vm_name)
 
     @track_vmware_operation("Power Off VM")
     def power_off_vm(self, vm_name):
         """Power off a virtual machine (hard power off)"""
-        return self.power_ops.power_off_vm(vm_name)
+        return self._power_and_invalidate(self.power_ops.power_off_vm, vm_name)
 
     @track_vmware_operation("Reset VM")
     def reset_vm(self, vm_name):
         """Reset a virtual machine (hard reset)"""
-        return self.power_ops.reset_vm(vm_name)
+        return self._power_and_invalidate(self.power_ops.reset_vm, vm_name)
 
     @track_vmware_operation("Shutdown VM")
     def shutdown_vm(self, vm_name):
         """Gracefully shutdown a virtual machine using VMware Tools"""
-        return self.power_ops.shutdown_vm(vm_name)
+        return self._power_and_invalidate(self.power_ops.shutdown_vm, vm_name)
 
     @track_vmware_operation("Restart VM")
     def restart_vm(self, vm_name):
         """Gracefully restart a virtual machine using VMware Tools"""
-        return self.power_ops.restart_vm(vm_name)
+        return self._power_and_invalidate(self.power_ops.restart_vm, vm_name)
 
     @track_vmware_operation("Set VM Boot Order")
     def set_vm_boot_order(self, vm_name, boot_order):

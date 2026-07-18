@@ -461,6 +461,28 @@ class SystemsPatchTests(unittest.TestCase):
         handler._handle_secure_boot_patch(req, "vm-test", req.path)
         self.assertEqual(req.status_code, 501)
 
+    def test_secure_boot_get_reflects_vmware_state(self):
+        class FakeClient:
+            def get_vm_info(self, vm_name):
+                return {
+                    'name': vm_name,
+                    'firmware': 'efi',
+                    'efi_secure_boot': False,
+                    'power_state': 'poweredOff',
+                }
+
+        handler = SystemsHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {"vm-test": FakeClient()},
+            None,
+        )
+        req = FakeRequestHandler("/redfish/v1/Systems/vm-test/SecureBoot")
+        handler._handle_secure_boot_get(req, "vm-test", req.path)
+        self.assertEqual(req.status_code, 200)
+        payload = json.loads(req.body.decode("utf-8"))
+        self.assertFalse(payload["SecureBootEnable"])
+        self.assertEqual(payload["SecureBootCurrentBoot"], "Disabled")
+
 
 class UpdateServiceHandlerTests(unittest.TestCase):
     def _make_handler(self):
@@ -1095,6 +1117,8 @@ class VMwareReconnectTests(unittest.TestCase):
         client.vm_ops = MagicMock()
         client.power_ops = MagicMock()
         client.media_ops = MagicMock()
+        client._vm_info_cache = {}
+        client._vm_info_cache_ttl = 5.0
 
         client.vm_ops.get_vm_info.side_effect = [
             vim.fault.NotAuthenticated(),
@@ -1110,6 +1134,48 @@ class VMwareReconnectTests(unittest.TestCase):
         self.assertEqual(client.media_ops.connection, client.connection)
         self.assertEqual(result['name'], 'vm-1')
         self.assertEqual(client.vm_ops.get_vm_info.call_count, 2)
+
+    def test_get_vm_info_uses_ttl_cache(self):
+        from unittest.mock import MagicMock
+        from src.vmware_client import VMwareClient
+
+        client = VMwareClient.__new__(VMwareClient)
+        client.host = 'vcenter.example.com'
+        client.connection = MagicMock()
+        client.vm_ops = MagicMock()
+        client.power_ops = MagicMock()
+        client.media_ops = MagicMock()
+        client._vm_info_cache = {}
+        client._vm_info_cache_ttl = 5.0
+        client.vm_ops.get_vm_info.return_value = {
+            'name': 'vm-1', 'power_state': 'poweredOn'
+        }
+
+        first = client.get_vm_info('vm-1')
+        second = client.get_vm_info('vm-1')
+
+        self.assertEqual(first['power_state'], 'poweredOn')
+        self.assertIs(first, second)
+        self.assertEqual(client.vm_ops.get_vm_info.call_count, 1)
+
+    def test_power_on_invalidates_vm_info_cache(self):
+        from unittest.mock import MagicMock
+        from src.vmware_client import VMwareClient
+
+        client = VMwareClient.__new__(VMwareClient)
+        client.host = 'vcenter.example.com'
+        client.connection = MagicMock()
+        client.vm_ops = MagicMock()
+        client.power_ops = MagicMock()
+        client.media_ops = MagicMock()
+        client._vm_info_cache = {
+            'vm-1': (0.0, {'name': 'vm-1', 'power_state': 'poweredOff'})
+        }
+        client._vm_info_cache_ttl = 5.0
+        client.power_ops.power_on_vm.return_value = True
+
+        self.assertTrue(client.power_on_vm('vm-1'))
+        self.assertNotIn('vm-1', client._vm_info_cache)
 
 
 class ResponseUtilsTests(unittest.TestCase):

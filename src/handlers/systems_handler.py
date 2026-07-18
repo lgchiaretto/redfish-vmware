@@ -338,6 +338,7 @@ class SystemsHandler(RedfishResponseMixin):
     def _handle_bios_get(self, request_handler, vm_name: str, path: str):
         """Handle BIOS GET requests"""
         if path.endswith('/Bios'):
+            secure_boot_enabled, boot_mode = self._get_secure_boot_state(vm_name)
             data = {
                 '@odata.type': '#Bios.v1_1_0.Bios',
                 '@odata.id': f'/redfish/v1/Systems/{vm_name}/Bios',
@@ -346,9 +347,9 @@ class SystemsHandler(RedfishResponseMixin):
                 'Description': f'BIOS Configuration for {vm_name}',
                 'BiosVersion': '2.0.0',
                 'Attributes': {
-                    'SecureBootEnable': True,
+                    'SecureBootEnable': secure_boot_enabled,
                     'TpmSecurity': 'On',
-                    'BootMode': 'UEFI'
+                    'BootMode': boot_mode
                 },
                 'Actions': {
                     '#Bios.ResetBios': {
@@ -544,17 +545,26 @@ class SystemsHandler(RedfishResponseMixin):
 
         self._send_error_response(request_handler, 404, "Not Found")
 
+    def _get_secure_boot_state(self, vm_name: str) -> tuple:
+        """Return (enabled: bool, boot_mode: str) from live VMware config."""
+        vm_info = self._get_vmware_info(vm_name)
+        firmware = (vm_info.get('firmware') or 'efi').lower()
+        boot_mode = 'UEFI' if firmware == 'efi' else 'Legacy'
+        enabled = bool(vm_info.get('efi_secure_boot', False)) and boot_mode == 'UEFI'
+        return enabled, boot_mode
+
     def _handle_secure_boot_get(self, request_handler, vm_name: str, path: str):
-        """Handle SecureBoot GET requests"""
+        """Handle SecureBoot GET requests using actual VM firmware state."""
         if path.endswith('/SecureBoot'):
+            secure_boot_enabled, _boot_mode = self._get_secure_boot_state(vm_name)
             data = {
                 '@odata.type': '#SecureBoot.v1_1_0.SecureBoot',
                 '@odata.id': f'/redfish/v1/Systems/{vm_name}/SecureBoot',
                 'Id': 'SecureBoot',
                 'Name': 'Secure Boot',
                 'Description': f'Secure Boot for {vm_name}',
-                'SecureBootEnable': True,
-                'SecureBootCurrentBoot': 'Enabled',
+                'SecureBootEnable': secure_boot_enabled,
+                'SecureBootCurrentBoot': 'Enabled' if secure_boot_enabled else 'Disabled',
                 'SecureBootMode': 'UserMode',
                 'Actions': {
                     '#SecureBoot.ResetKeys': {

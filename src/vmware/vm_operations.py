@@ -166,6 +166,16 @@ class VMOperations:
             if not vm:
                 return None
             
+            firmware = None
+            efi_secure_boot = False
+            if vm.config:
+                firmware = getattr(vm.config, 'firmware', None)
+                boot_options = getattr(vm.config, 'bootOptions', None)
+                if boot_options is not None:
+                    efi_secure_boot = bool(
+                        getattr(boot_options, 'efiSecureBootEnabled', False)
+                    )
+
             return {
                 'name': vm.name,
                 'power_state': vm.runtime.powerState,
@@ -177,6 +187,8 @@ class VMOperations:
                 'guest_hostname': vm.guest.hostName if vm.guest else None,
                 'uuid': vm.config.uuid if vm.config else None,
                 'instance_uuid': vm.config.instanceUuid if vm.config else None,
+                'firmware': firmware,
+                'efi_secure_boot': efi_secure_boot,
                 'nics': self._collect_nics(vm),
                 'disks': self._collect_disks(vm),
             }

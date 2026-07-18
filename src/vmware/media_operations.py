@@ -205,70 +205,98 @@ class MediaOperations:
         
         Args:
             vm_name: Name of the virtual machine
-            force: If True, attempt to force eject bypassing OS locks (timeout after 5s)
+            force: If True, attempt to force eject bypassing OS locks
             
         Returns:
             True if successful, False otherwise
         """
+        # vSAN/slow hosts often need more than a few seconds for eject + questions
+        force_timeout_s = 30
+        force_retry_timeout_s = 60
+
         try:
-            vm = self.vm_operations.get_vm(vm_name)
-            if not vm:
-                logger.error(f"VM '{vm_name}' not found")
-                return False
-            
-            logger.info(f"Unmounting ISO from VM '{vm_name}'{' (force mode)' if force else ''}")
-            
-            # Find CD/DVD device
-            cdrom_device = None
-            for device in vm.config.hardware.device:
-                if isinstance(device, vim.vm.device.VirtualCdrom):
-                    cdrom_device = device
-                    break
-            
-            if not cdrom_device:
-                logger.error(f"No CD/DVD device found for VM '{vm_name}'")
-                return False
-            
-            # Configure CD/DVD device to disconnect
-            # For force eject, just disconnect without changing backing
-            cdrom_spec = vim.vm.device.VirtualDeviceSpec()
-            cdrom_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
-            cdrom_spec.device = cdrom_device
-            
-            # Don't change backing info - just disconnect the device
-            # This bypasses OS locks by simply marking it as disconnected
-            cdrom_spec.device.backing = vim.vm.device.VirtualCdrom.IsoBackingInfo()
-            cdrom_spec.device.connectable = vim.vm.device.VirtualDevice.ConnectInfo()
-            cdrom_spec.device.connectable.connected = False
-            cdrom_spec.device.connectable.startConnected = False
-            
-            config_spec = vim.vm.ConfigSpec()
-            config_spec.deviceChange = [cdrom_spec]
-            
-            task = vm.Reconfigure(config_spec)
-            
-            # For force eject, wait for task and handle any runtime questions
-            if force:
-                result = wait_for_task_with_questions(task, vm, timeout=5)
-            else:
-                result = wait_for_task(task, timeout=None)
-            
-            if result:
-                logger.info(f"Successfully unmounted ISO from VM '{vm_name}'")
-            else:
-                logger.error(f"Failed to unmount ISO from VM '{vm_name}'")
-                # If force eject timed out, try again with longer timeout
-                if force:
-                    logger.warning(f"Force eject timed out for VM '{vm_name}', retrying with longer timeout...")
-                    result = wait_for_task_with_questions(task, vm, timeout=15)
-            
-            return result
-            
+            return self._unmount_iso_once(
+                vm_name, force=force,
+                force_timeout_s=force_timeout_s,
+                force_retry_timeout_s=force_retry_timeout_s,
+            )
         except vim.fault.NotAuthenticated:
             raise
+        except vim.fault.InvalidState as e:
+            logger.warning(
+                f"InvalidState ejecting ISO from '{vm_name}' ({e}); retrying once..."
+            )
+            try:
+                return self._unmount_iso_once(
+                    vm_name, force=True,
+                    force_timeout_s=force_retry_timeout_s,
+                    force_retry_timeout_s=force_retry_timeout_s,
+                )
+            except vim.fault.NotAuthenticated:
+                raise
+            except Exception as retry_e:
+                logger.error(f"Error unmounting ISO from VM '{vm_name}' after retry: {retry_e}")
+                return False
         except Exception as e:
             logger.error(f"Error unmounting ISO from VM '{vm_name}': {e}")
             return False
+
+    def _unmount_iso_once(self, vm_name, force=False, force_timeout_s=30, force_retry_timeout_s=60):
+        """Single attempt to unmount ISO from a VM CD/DVD drive."""
+        vm = self.vm_operations.get_vm(vm_name)
+        if not vm:
+            logger.error(f"VM '{vm_name}' not found")
+            return False
+
+        logger.info(f"Unmounting ISO from VM '{vm_name}'{' (force mode)' if force else ''}")
+
+        cdrom_device = None
+        for device in vm.config.hardware.device:
+            if isinstance(device, vim.vm.device.VirtualCdrom):
+                cdrom_device = device
+                break
+
+        if not cdrom_device:
+            logger.error(f"No CD/DVD device found for VM '{vm_name}'")
+            return False
+
+        cdrom_spec = vim.vm.device.VirtualDeviceSpec()
+        cdrom_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+        cdrom_spec.device = cdrom_device
+
+        cdrom_spec.device.backing = vim.vm.device.VirtualCdrom.IsoBackingInfo()
+        cdrom_spec.device.connectable = vim.vm.device.VirtualDevice.ConnectInfo()
+        cdrom_spec.device.connectable.connected = False
+        cdrom_spec.device.connectable.startConnected = False
+
+        config_spec = vim.vm.ConfigSpec()
+        config_spec.deviceChange = [cdrom_spec]
+
+        task = vm.Reconfigure(config_spec)
+
+        if force:
+            result = wait_for_task_with_questions(task, vm, timeout=force_timeout_s)
+        else:
+            result = wait_for_task(task, timeout=None)
+
+        if result:
+            logger.info(f"Successfully unmounted ISO from VM '{vm_name}'")
+            return True
+
+        logger.error(f"Failed to unmount ISO from VM '{vm_name}'")
+        if force:
+            logger.warning(
+                f"Force eject timed out for VM '{vm_name}', "
+                f"retrying with {force_retry_timeout_s}s timeout..."
+            )
+            # Re-issue reconfigure; previous task may already be done/failed
+            task = vm.Reconfigure(config_spec)
+            result = wait_for_task_with_questions(
+                task, vm, timeout=force_retry_timeout_s
+            )
+            if result:
+                logger.info(f"Successfully unmounted ISO from VM '{vm_name}' on retry")
+        return result
     
     def _parse_datastore_path(self, datastore_path: str):
         """Parse '[DS] folder/file.iso' into (datastore_name, file_path)."""

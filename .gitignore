@@ -47,6 +47,7 @@ Thumbs.db
 config/config.json.backup
 config/*.secret
 config/config.json
+config/config-*.json
 *.key
 *.pem
 

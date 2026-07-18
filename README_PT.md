@@ -422,11 +422,11 @@ Também é possível executar esta aplicação dentro de um container.
 Comece construindo a imagem:
 
 ```
-podman build -f Docker/Containerfile -t registry.xphyrlab.net/markd/redfish-vmware:latest .
+podman build -f Containerfile -t localhost/redfish-vmware:latest .
 ```
 
 ```
-podman run -p 8443:8443 -v ./config:/app/config:Z registry.xphyrlab.net/markd/redfish-vmware:latest
+podman run -p 8443:8443 -v ./config:/app/config:Z localhost/redfish-vmware:latest
 ```
 
 ## 🤝 Contribuindo
