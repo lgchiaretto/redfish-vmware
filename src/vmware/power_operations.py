@@ -45,7 +45,7 @@ class PowerOperations:
                 return False
             
             if vm.runtime.powerState == 'poweredOn':
-                logger.info(f"VM '{vm_name}' is already powered on")
+                logger.debug(f"VM '{vm_name}' is already powered on")
                 return True
             
             logger.info(f"Powering on VM '{vm_name}'")
@@ -82,7 +82,7 @@ class PowerOperations:
                 return False
             
             if vm.runtime.powerState == 'poweredOff':
-                logger.info(f"VM '{vm_name}' is already powered off")
+                logger.debug(f"VM '{vm_name}' is already powered off")
                 return True
             
             logger.info(f"Powering off VM '{vm_name}'")
@@ -156,7 +156,7 @@ class PowerOperations:
                 return False
             
             if vm.runtime.powerState == 'poweredOff':
-                logger.info(f"VM '{vm_name}' is already powered off")
+                logger.debug(f"VM '{vm_name}' is already powered off")
                 return True
             
             # Check if VMware Tools is available

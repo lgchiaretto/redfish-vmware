@@ -61,16 +61,6 @@ def setup_logging():
         log_level = logging.INFO  # Moderate logging for VMware operations
     else:
         log_level = logging.INFO
-    
-    # Print startup information
-    print(f"🐛 Debug Environment Variables:")
-    print(f"   REDFISH_DEBUG={debug_env} (General debug: {debug_enabled})")
-    print(f"   REDFISH_PERF_DEBUG={os.getenv('REDFISH_PERF_DEBUG', 'false')} (Performance debug: {performance_debug})")
-    print(f"   REDFISH_VMWARE_DEBUG={os.getenv('REDFISH_VMWARE_DEBUG', 'false')} (VMware debug: {vmware_debug})")
-    print(f"� Log Level: {logging.getLevelName(log_level)}")
-    print(f"🔍 Enhanced debugging capabilities enabled")
-    print(f"� Performance monitoring: {'ON' if performance_debug else 'OFF'}")
-    print(f"⚡ VMware operation tracking: {'ON' if vmware_debug else 'OFF'}")
 
     # Setup log file paths with rotation
     log_dir = os.getenv('REDFISH_LOG_DIR', '/var/log')
@@ -146,6 +136,14 @@ def setup_logging():
     # Get main logger
     logger = logging.getLogger(__name__)
 
+    # Single startup line summarizing debug flags (avoid multi-line print spam)
+    logger.info(
+        f"Logging initialized: level={logging.getLevelName(log_level)}, "
+        f"REDFISH_DEBUG={debug_enabled}, "
+        f"REDFISH_PERF_DEBUG={performance_debug}, "
+        f"REDFISH_VMWARE_DEBUG={vmware_debug}"
+    )
+
     # Log startup information
     if log_file:
         logger.info(f"📝 Logging to: {log_file}")
@@ -155,8 +153,6 @@ def setup_logging():
     # Log debug mode status
     if debug_enabled:
         logger.info("🐛 FULL DEBUG MODE ENABLED - All operations will be logged in detail")
-        logger.info("📊 Performance metrics included in logs")
-        logger.info("🔍 VMware operations context included")
     elif performance_debug:
         logger.info("📊 PERFORMANCE DEBUG MODE - Performance metrics enabled")
     elif vmware_debug:
@@ -194,8 +190,16 @@ def get_logger(name):
     return logger
 
 
+def _perf_debug_enabled():
+    """Return True when REDFISH_PERF_DEBUG is enabled."""
+    return os.getenv('REDFISH_PERF_DEBUG', 'false').lower() in ['true', '1', 'yes', 'on']
+
+
 def log_performance_metric(logger, operation, duration, success=True, **kwargs):
-    """Log performance metrics for operations"""
+    """Log performance metrics for operations (only when REDFISH_PERF_DEBUG is on)."""
+    if not _perf_debug_enabled():
+        return
+
     status = "✅" if success else "❌"
     message = f"{status} {operation} completed in {duration:.3f}s"
     

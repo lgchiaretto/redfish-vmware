@@ -79,7 +79,7 @@ class AuthenticationManager:
                 logger.debug(f"🔑 Basic auth attempt for user: {username}")
                 
                 if self._check_credentials(username, password):
-                    logger.info(f"✅ Basic authentication successful for: {username}")
+                    logger.debug(f"✅ Basic authentication successful for: {username}")
                     return True, username
                 else:
                     logger.warning(f"❌ Basic authentication failed for: {username}")
@@ -136,7 +136,7 @@ class AuthenticationManager:
         }
         
         self.sessions[session_id] = session_data
-        logger.info(f"🎫 Session created for user: {username} (ID: {session_id})")
+        logger.debug(f"🎫 Session created for user: {username} (ID: {session_id})")
         
         return {
             'Id': session_id,
@@ -169,7 +169,7 @@ class AuthenticationManager:
         if session_id in self.sessions:
             username = self.sessions[session_id]['UserName']
             del self.sessions[session_id]
-            logger.info(f"🗑️ Session deleted for user: {username} (ID: {session_id})")
+            logger.debug(f"🗑️ Session deleted for user: {username} (ID: {session_id})")
             return True
         return False
     
@@ -206,6 +206,6 @@ class AuthenticationManager:
         for session_id in expired_sessions:
             username = self.sessions[session_id]['UserName']
             del self.sessions[session_id]
-            logger.info(f"🧹 Expired session cleaned up for: {username} (ID: {session_id})")
+            logger.debug(f"🧹 Expired session cleaned up for: {username} (ID: {session_id})")
 
         return len(expired_sessions)

@@ -114,14 +114,21 @@ Copy `config/config.json.example` to `config/config.json` (never commit real cre
 | `delete_on_eject` | Delete ISO from datastore after eject |
 | `datacenter_folder_refresh_interval_seconds` | Folder re-scan interval (default `300`) |
 
-Environment overrides:
+Environment overrides (all default **off** / production-quiet):
 
 | Variable | Purpose |
 |----------|---------|
 | `REDFISH_PORT` | Override listen port |
-| `REDFISH_DEBUG=true` | Verbose request logging |
+| `REDFISH_DEBUG=true` | Verbose request/access logging (use only while troubleshooting) |
 | `REDFISH_PERF_DEBUG=true` | Performance metrics |
 | `REDFISH_VMWARE_DEBUG=true` | VMware operation details |
+
+Production containers and systemd units leave these unset/`false`. For investigation on a BMC VM:
+
+```bash
+podman run -d ... -e REDFISH_DEBUG=true localhost/redfish-vmware:latest
+# or: sudo systemctl edit redfish-vmware-server  →  Environment=REDFISH_DEBUG=true
+```
 
 ## OpenShift Metal3 integration
 

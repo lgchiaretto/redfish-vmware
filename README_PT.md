@@ -76,12 +76,14 @@ sudo systemctl restart redfish-vmware-server
 
 ### Níveis de Debug
 
-| Variável | Descrição | Caso de uso |
-|----------|-----------|-------------|
-| `REDFISH_DEBUG=true` | Logging debug completo | Rastreamento completo de requisições/respostas |
-| `REDFISH_PERF_DEBUG=true` | Monitoramento de performance | Análise de gargalos de performance |
-| `REDFISH_VMWARE_DEBUG=true` | Operações VMware | Troubleshooting da API VMware |
-| `REDFISH_LOG_DIR=/path` | Localização customizada de logs | Logging centralizado |
+Por padrão o serviço roda em modo produção (logs limpos). Ative debug apenas para troubleshooting:
+
+| Variável | Default | Descrição | Caso de uso |
+|----------|---------|-----------|-------------|
+| `REDFISH_DEBUG=true` | `false` | Logging debug completo | Rastreamento de requisições/respostas |
+| `REDFISH_PERF_DEBUG=true` | `false` | Monitoramento de performance | Análise de gargalos |
+| `REDFISH_VMWARE_DEBUG=true` | `false` | Operações VMware | Troubleshooting da API VMware |
+| `REDFISH_LOG_DIR=/path` | `/var/log` | Localização customizada de logs | Logging centralizado |
 
 ### Endpoints de Monitoramento
 

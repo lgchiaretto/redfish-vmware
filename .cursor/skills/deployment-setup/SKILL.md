@@ -117,13 +117,21 @@ sudo systemctl edit redfish-vmware-server
 
 ## Environment Variables
 
+Production default: all debug flags **off**. Enable only while troubleshooting.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REDFISH_DEBUG` | `false` | Full debug logging |
+| `REDFISH_DEBUG` | `false` | Full debug / access logging |
 | `REDFISH_PERF_DEBUG` | `false` | Performance metrics |
 | `REDFISH_VMWARE_DEBUG` | `false` | VMware operation details |
 | `REDFISH_PORT` | from config | Override server port |
 | `REDFISH_LOG_DIR` | `/var/log` | Log file directory |
+
+Podman example for temporary debug:
+
+```bash
+podman run ... -e REDFISH_DEBUG=true localhost/redfish-vmware:latest
+```
 
 ## Firewall Configuration
 

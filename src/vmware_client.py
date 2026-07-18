@@ -55,7 +55,7 @@ def track_vmware_operation(operation_name):
             start_time = time.time()
             vm_name = args[0] if args and isinstance(args[0], str) else 'unknown'
 
-            logger.info(f"🔧 [{operation_name}] Starting for VM: {vm_name}")
+            logger.debug(f"🔧 [{operation_name}] Starting for VM: {vm_name}")
             logger.debug(f"📋 [{operation_name}] Args: {args}, Kwargs: {kwargs}")
 
             def _execute():
@@ -70,7 +70,7 @@ def track_vmware_operation(operation_name):
                     log_performance_metric(logger, operation_name, duration, False, vm_name=vm_name)
                     _record_health(vm_name, operation_name, False, duration)
                     return result
-                logger.info(f"✅ [{operation_name}] Completed for VM: {vm_name} in {duration:.3f}s")
+                logger.debug(f"✅ [{operation_name}] Completed for VM: {vm_name} in {duration:.3f}s")
                 log_performance_metric(logger, operation_name, duration, True, vm_name=vm_name)
                 _record_health(vm_name, operation_name, True, duration)
                 return result
@@ -221,7 +221,7 @@ class VMwareClient:
         """Fetch live VM information from vCenter."""
         vm_info = self.vm_ops.get_vm_info(vm_name)
         if vm_info:
-            logger.info(f"✅ VM info retrieved for {vm_name}: Power={vm_info.get('power_state', 'unknown')}")
+            logger.debug(f"✅ VM info retrieved for {vm_name}: Power={vm_info.get('power_state', 'unknown')}")
         else:
             logger.warning(f"⚠️ VM not found: {vm_name}")
         return vm_info

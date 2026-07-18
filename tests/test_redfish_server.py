@@ -1264,5 +1264,188 @@ class TaskUtilsTests(unittest.TestCase):
         vm.AnswerVM.assert_called_once_with('q1', 'yes')
 
 
+class LoggingNoiseReductionTests(unittest.TestCase):
+    """Verify high-volume messages stay at DEBUG; state-changing actions stay at INFO."""
+
+    def test_auth_success_logged_at_debug_not_info(self):
+        import base64
+        from src.auth.manager import AuthenticationManager
+
+        auth = AuthenticationManager({}, enable_background_cleanup=False)
+        token = base64.b64encode(b"admin:password").decode("ascii")
+
+        class Req:
+            headers = {"Authorization": f"Basic {token}"}
+
+        with self.assertLogs("src.auth.manager", level="DEBUG") as captured:
+            ok, user = auth.authenticate_request(Req())
+
+        self.assertTrue(ok)
+        self.assertEqual(user, "admin")
+        info_msgs = [r.getMessage() for r in captured.records if r.levelno >= 20]  # INFO+
+        debug_msgs = [r.getMessage() for r in captured.records if r.levelno == 10]
+        self.assertFalse(
+            any("authentication successful" in m for m in info_msgs),
+            f"auth success should not be INFO: {info_msgs}",
+        )
+        self.assertTrue(any("authentication successful" in m for m in debug_msgs))
+
+    def test_metal3_detection_is_debug_not_warning(self):
+        from unittest.mock import MagicMock, patch
+        from src.handlers.redfish_handler import RedfishHandler
+
+        handler = RedfishHandler.__new__(RedfishHandler)
+        handler._route_get_request = MagicMock()
+        handler._send_error_response = MagicMock()
+
+        class Req(FakeRequestHandler):
+            client_address = ("10.0.0.1", 12345)
+
+            def __init__(self):
+                super().__init__("/redfish/v1/UpdateService")
+                self.headers = {"User-Agent": "ironic-python-agent"}
+
+        with self.assertLogs("src.handlers.redfish_handler", level="DEBUG") as captured:
+            handler.handle_get_request(Req())
+
+        warning_msgs = [r.getMessage() for r in captured.records if r.levelno >= 30]
+        debug_msgs = [r.getMessage() for r in captured.records if r.levelno == 10]
+        self.assertFalse(
+            any("METAL3" in m or "CRITICAL METAL3" in m for m in warning_msgs),
+            f"Metal3 detection must not be WARNING: {warning_msgs}",
+        )
+        self.assertTrue(any("METAL3" in m for m in debug_msgs))
+        self.assertTrue(any("GET /redfish/v1/UpdateService" in m for m in debug_msgs))
+
+    def test_get_path_log_not_emitted_at_info(self):
+        from unittest.mock import MagicMock
+        from src.handlers.redfish_handler import RedfishHandler
+
+        handler = RedfishHandler.__new__(RedfishHandler)
+        handler._route_get_request = MagicMock()
+
+        class Req(FakeRequestHandler):
+            client_address = ("10.0.0.1", 12345)
+
+            def __init__(self):
+                super().__init__("/redfish/v1/Systems")
+                self.headers = {"User-Agent": "curl/8.0"}
+
+        # Only capture INFO+ — GET path must not appear
+        with self.assertLogs("src.handlers.redfish_handler", level="INFO") as captured:
+            # Force at least one INFO so assertLogs does not fail empty
+            import logging
+            logging.getLogger("src.handlers.redfish_handler").info("sentinel")
+            handler.handle_get_request(Req())
+
+        info_msgs = [r.getMessage() for r in captured.records]
+        self.assertFalse(any("GET /redfish/v1/Systems" in m for m in info_msgs))
+
+    def test_power_action_still_logs_info(self):
+        from src.handlers.systems_handler import SystemsHandler
+
+        class FakeClient:
+            def power_on_vm(self, vm_name):
+                return True
+
+        class FakeTaskManager:
+            def create_task(self, *args, **kwargs):
+                return "task-1"
+
+            def complete_task(self, *args, **kwargs):
+                return None
+
+        handler = SystemsHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {"vm-test": FakeClient()},
+            FakeTaskManager(),
+        )
+        req = FakeRequestHandler("/redfish/v1/Systems/vm-test/Actions/ComputerSystem.Reset")
+
+        with self.assertLogs("src.handlers.systems_handler", level="INFO") as captured:
+            handler._handle_power_action(req, "vm-test", "On")
+
+        self.assertTrue(any("Power action" in r.getMessage() for r in captured.records))
+        self.assertEqual(req.status_code, 204)
+
+    def test_insert_media_still_logs_info(self):
+        import io
+        from src.handlers.managers_handler import ManagersHandler
+
+        class FakeClient:
+            def get_iso_status(self, vm_name):
+                return {"inserted": False, "image": None, "connected": False}
+
+            def mount_iso(self, vm_name, iso_path):
+                return True
+
+        handler = ManagersHandler(
+            {"vm-test": {"name": "vm-test"}},
+            {"vm-test": FakeClient()},
+            {"virtual_media_datastore": "DS1"},
+        )
+        body = json.dumps({"Image": "[DS1] test.iso", "WriteProtected": True}).encode()
+
+        class PostReq(FakeRequestHandler):
+            def __init__(self):
+                super().__init__(
+                    "/redfish/v1/Managers/vm-test-bmc/VirtualMedia/CD/Actions/VirtualMedia.InsertMedia"
+                )
+                self.headers = {"Content-Length": str(len(body))}
+                self.rfile = io.BytesIO(body)
+
+        with self.assertLogs("src.handlers.managers_handler", level="INFO") as captured:
+            handler._handle_insert_media(PostReq(), "vm-test", "vm-test-bmc", "CD")
+
+        msgs = [r.getMessage() for r in captured.records]
+        self.assertTrue(any("Inserting virtual media" in m for m in msgs))
+        self.assertTrue(any("Virtual media inserted" in m for m in msgs))
+
+    def test_log_performance_metric_gated_by_env(self):
+        import logging
+        from unittest.mock import patch
+        from src.utils.logging_config import log_performance_metric
+
+        test_logger = logging.getLogger("test.perf.metric")
+        test_logger.setLevel(logging.DEBUG)
+
+        with patch.dict(os.environ, {"REDFISH_PERF_DEBUG": "false"}, clear=False):
+            with self.assertLogs(test_logger, level="INFO") as captured:
+                test_logger.info("sentinel-off")
+                log_performance_metric(test_logger, "op", 0.1, True)
+            self.assertEqual(len([r for r in captured.records if "completed in" in r.getMessage()]), 0)
+
+        with patch.dict(os.environ, {"REDFISH_PERF_DEBUG": "true"}, clear=False):
+            with self.assertLogs(test_logger, level="INFO") as captured:
+                log_performance_metric(test_logger, "op", 0.1, True)
+            self.assertTrue(any("completed in" in r.getMessage() for r in captured.records))
+
+    def test_track_vmware_start_complete_at_debug(self):
+        from unittest.mock import MagicMock, patch
+        from src.vmware_client import track_vmware_operation
+
+        class FakeClient:
+            def __init__(self):
+                self.connection = MagicMock()
+                self.connection.ensure_authenticated = MagicMock()
+
+            @track_vmware_operation("Get VM Info")
+            def get_info(self, vm_name):
+                return {"power_state": "poweredOn"}
+
+        client = FakeClient()
+        with patch.dict(os.environ, {"REDFISH_PERF_DEBUG": "false"}, clear=False):
+            with self.assertLogs("src.vmware_client", level="DEBUG") as captured:
+                result = client.get_info("vm-test")
+
+        self.assertEqual(result["power_state"], "poweredOn")
+        info_msgs = [r.getMessage() for r in captured.records if r.levelno >= 20]
+        debug_msgs = [r.getMessage() for r in captured.records if r.levelno == 10]
+        self.assertFalse(any("Starting for VM" in m for m in info_msgs))
+        self.assertFalse(any("Completed for VM" in m and "after reconnect" not in m for m in info_msgs))
+        self.assertTrue(any("Starting for VM" in m for m in debug_msgs))
+        self.assertTrue(any("Completed for VM" in m for m in debug_msgs))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -70,20 +70,20 @@ class RedfishHandler(RedfishResponseMixin):
         client_ip = request_handler.client_address[0]
         user_agent = request_handler.headers.get('User-Agent', 'Unknown')
         
-        # Enhanced logging for Metal3/Ironic debugging
-        logger.info(f"🔍 GET {path} from {client_ip}")
+        # Request path logging at DEBUG — Metal3 polls generate high volume
+        logger.debug(f"🔍 GET {path} from {client_ip}")
         logger.debug(f"🤖 User-Agent: {user_agent}")
         logger.debug(f"🎯 Processing GET request for path: {path}")
         
-        # Metal3/Ironic specific detection
+        # Metal3/Ironic specific detection (DEBUG — normal operational traffic)
         if 'ironic' in user_agent.lower() or 'metal3' in user_agent.lower():
-            logger.warning(f"🔧 METAL3/IRONIC REQUEST DETECTED: {path}")
-            logger.warning(f"🔧 This request is from Metal3/Ironic - ensure it succeeds!")
+            logger.debug(f"🔧 METAL3/IRONIC REQUEST DETECTED: {path}")
+            logger.debug(f"🔧 This request is from Metal3/Ironic - ensure it succeeds!")
             
         # Check for common Metal3/Ironic inspection patterns
         if any(pattern in path for pattern in ['/UpdateService', '/TaskService', '/FirmwareInventory', '/SoftwareInventory', '/Storage', '/Bios']):
-            logger.warning(f"🔄 CRITICAL METAL3 INSPECTION ENDPOINT: {path}")
-            logger.warning(f"🔄 Metal3 is checking this endpoint - response must be valid!")
+            logger.debug(f"🔄 CRITICAL METAL3 INSPECTION ENDPOINT: {path}")
+            logger.debug(f"🔄 Metal3 is checking this endpoint - response must be valid!")
         
         try:
             # Route the request
@@ -95,7 +95,7 @@ class RedfishHandler(RedfishResponseMixin):
     def handle_post_request(self, request_handler):
         """Handle POST requests"""
         path = request_handler.path
-        logger.info(f"📝 POST {path}")
+        logger.debug(f"📝 POST {path}")
         
         try:
             self._route_post_request(request_handler, path)
@@ -106,7 +106,7 @@ class RedfishHandler(RedfishResponseMixin):
     def handle_patch_request(self, request_handler):
         """Handle PATCH requests"""
         path = request_handler.path
-        logger.info(f"🔧 PATCH {path}")
+        logger.debug(f"🔧 PATCH {path}")
         
         try:
             self._route_patch_request(request_handler, path)
@@ -117,7 +117,7 @@ class RedfishHandler(RedfishResponseMixin):
     def handle_delete_request(self, request_handler):
         """Handle DELETE requests"""
         path = request_handler.path
-        logger.info(f"🗑️ DELETE {path}")
+        logger.debug(f"🗑️ DELETE {path}")
         
         try:
             self._route_delete_request(request_handler, path)
@@ -398,7 +398,7 @@ class RedfishHandler(RedfishResponseMixin):
             health_data["ConnectedVMs"] = overall_connected
             health_data["TotalVMs"] = total_vms
             
-            logger.info(f"📊 Health check: {overall_connected}/{total_vms} VMs connected")
+            logger.debug(f"📊 Health check: {overall_connected}/{total_vms} VMs connected")
             self._send_json_response(request_handler, 200, health_data)
             
         except Exception as e:

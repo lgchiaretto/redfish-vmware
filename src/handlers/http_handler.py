@@ -71,7 +71,7 @@ class RedfishRequestHandler(BaseHTTPRequestHandler):
             
             if any(ssl_term in error_str for ssl_term in ['ssl', 'tls', 'handshake', 'wrong version']):
                 logger.warning(f"🔒 [{self.request_id}] SSL/TLS connection attempt from {client_ip} on HTTP port")
-                logger.info(f"💡 [{self.request_id}] Hint: Client should use HTTP (not HTTPS) for this endpoint")
+                logger.debug(f"💡 [{self.request_id}] Hint: Client should use HTTP (not HTTPS) for this endpoint")
             else:
                 logger.warning(f"⚠️ [{self.request_id}] Connection setup failed from {client_ip}: {e}")
             raise
@@ -100,12 +100,12 @@ class RedfishRequestHandler(BaseHTTPRequestHandler):
                     
                     if has_ssl_error and client_ip not in self.server._ssl_warnings:
                         logger.warning(f"🚫 [{self.request_id}] {client_ip} - Malformed HTTP request or HTTPS on HTTP port")
-                        logger.info(f"💡 [{self.request_id}] Use HTTP protocol for this endpoint")
+                        logger.debug(f"💡 [{self.request_id}] Use HTTP protocol for this endpoint")
                         self.server._ssl_warnings.add(client_ip)
                     return
                 
-            # Log normal requests with enhanced information
-            logger.info(f"🌐 [{self.request_id}] {client_ip} - {message}")
+            # Access log only at DEBUG — Metal3 polls generate high volume
+            logger.debug(f"🌐 [{self.request_id}] {client_ip} - {message}")
             
         except Exception as e:
             logger.debug(f"🔧 [{self.request_id}] Log filtering error: {e}")
@@ -121,7 +121,7 @@ class RedfishRequestHandler(BaseHTTPRequestHandler):
             if hasattr(self, 'raw_requestline') and self.raw_requestline:
                 if len(self.raw_requestline) > 0 and self.raw_requestline[0] == 0x16:
                     logger.warning(f"🔐 [{self.request_id}] {client_ip} - SSL/TLS handshake detected on HTTP port")
-                    logger.info(f"💡 [{self.request_id}] Configure client to use HTTP (not HTTPS)")
+                    logger.debug(f"💡 [{self.request_id}] Configure client to use HTTP (not HTTPS)")
                     
                     # Send helpful HTTP response
                     try:
@@ -147,7 +147,7 @@ class RedfishRequestHandler(BaseHTTPRequestHandler):
             'content_length': self.headers.get('Content-Length', '0')
         }
         
-        logger.info(f"🚀 [{self.request_id}] {method} {self.path} - Client: {client_info['ip']}:{client_info['port']}")
+        logger.debug(f"🚀 [{self.request_id}] {method} {self.path} - Client: {client_info['ip']}:{client_info['port']}")
         logger.debug(f"🔍 [{self.request_id}] User-Agent: {client_info['user_agent']}")
         logger.debug(f"📋 [{self.request_id}] Content-Type: {client_info['content_type']}, Length: {client_info['content_length']}")
         
@@ -164,15 +164,15 @@ class RedfishRequestHandler(BaseHTTPRequestHandler):
         # Record in tracker
         request_tracker.record_request(method, self.path, duration, status_code)
         
-        # Log completion
+        # Log completion at DEBUG — high volume under Metal3 polling
         status_emoji = "✅" if 200 <= status_code < 300 else "⚠️" if 300 <= status_code < 400 else "❌"
-        logger.info(f"{status_emoji} [{self.request_id}] {method} {self.path} - {status_code} in {duration:.3f}s")
+        logger.debug(f"{status_emoji} [{self.request_id}] {method} {self.path} - {status_code} in {duration:.3f}s")
         
         if additional_info:
             for key, value in additional_info.items():
                 logger.debug(f"📊 [{self.request_id}] {key}: {value}")
         
-        # Log performance metrics if enabled
+        # Log performance metrics if REDFISH_PERF_DEBUG is enabled
         log_performance_metric(logger, f"{method} {self.path}", duration, 200 <= status_code < 300,
                               status_code=status_code, request_id=self.request_id)
     

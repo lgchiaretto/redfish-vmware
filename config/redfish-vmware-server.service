@@ -10,9 +10,13 @@ User=root
 Group=root
 WorkingDirectory=__PROJECT_ROOT__
 Environment=PYTHONUNBUFFERED=1
-Environment=REDFISH_DEBUG=true
-Environment=REDFISH_PERF_DEBUG=true
-Environment=REDFISH_VMWARE_DEBUG=true
+# Debug flags default OFF for production. Enable via systemctl edit when troubleshooting:
+#   Environment=REDFISH_DEBUG=true
+#   Environment=REDFISH_PERF_DEBUG=true
+#   Environment=REDFISH_VMWARE_DEBUG=true
+Environment=REDFISH_DEBUG=false
+Environment=REDFISH_PERF_DEBUG=false
+Environment=REDFISH_VMWARE_DEBUG=false
 # Optional: set the Redfish listen port via environment or configure in config/config.json
 Environment=REDFISH_PORT=8443
 Environment=PYTHONPATH=__PROJECT_ROOT__/src
