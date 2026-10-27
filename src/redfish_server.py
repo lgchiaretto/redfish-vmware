@@ -218,67 +218,83 @@ class RedfishServer:
         discovered_vm_names = set()
         discovered_count = 0
         
-        for folder_config in folder_configs:
-            datacenter = folder_config['datacenter']
-            folder_path = folder_config['folder_path']
-            
-            try:
-                logger.info(f"🔍 Discovering VMs in {datacenter}/{folder_path}...")
-                
-                # Import here to avoid circular dependencies
-                from vmware.connection import VMwareConnection
-                from vmware.vm_operations import VMOperations
-                
-                # Create temporary connection for discovery
-                connection = VMwareConnection(
-                    vmware_host, 
-                    vmware_user, 
-                    vmware_password,
-                    vmware_port,
-                    disable_ssl_vmware
+        # Import here to avoid circular dependencies
+        from vmware.connection import VMwareConnection
+        from vmware.vm_operations import VMOperations
+        
+        # One temporary connection shared by all folders, always closed below
+        try:
+            connection = VMwareConnection(
+                vmware_host, 
+                vmware_user, 
+                vmware_password,
+                vmware_port,
+                disable_ssl_vmware
+            )
+        except Exception as e:
+            logger.error(f"❌ Failed to connect to VMware for folder discovery: {e}")
+            # Skip pruning: an unreachable vCenter must not drop discovered VMs
+            return set()
+        
+        try:
+            vm_ops = VMOperations(connection)
+            for folder_config in folder_configs:
+                discovered_count += self._discover_vms_in_folder(
+                    vm_ops, folder_config, config, manual_vm_names, discovered_vm_names,
+                    vmware_host, vmware_user, vmware_password
                 )
-                
-                vm_ops = VMOperations(connection)
-                discovered_vms = vm_ops.list_vms_in_folder(datacenter, folder_path)
-                
-                connection.disconnect()
-                
-                # Add discovered VMs to config (avoid duplicates)
-                for vm_info in discovered_vms:
-                    vm_name = vm_info['name']
-                    discovered_vm_names.add(vm_name)
-                    
-                    if vm_name in manual_vm_names:
-                        logger.debug(f"  ℹ️  VM '{vm_name}' already manually configured, skipping")
-                        continue
-                    
-                    # Create VM configuration entry
-                    vm_config = {
-                        'name': vm_name,
-                        'vcenter_host': vmware_host,
-                        'vcenter_user': vmware_user,
-                        'vcenter_password': vmware_password,
-                        'redfish_user': 'admin',  # Default credentials
-                        'redfish_password': 'password',
-                        'discovered': True,
-                        'discovered_from': f"{datacenter}/{folder_path}"
-                    }
-                    
-                    config['vms'].append(vm_config)
-                    manual_vm_names.add(vm_name)
-                    discovered_count += 1
-                    logger.info(f"  ✅ Added discovered VM: {vm_name}")
-                
-                logger.info(f"📊 Discovered {discovered_count} new VMs from {datacenter}/{folder_path}")
-                
-            except Exception as e:
-                logger.error(f"❌ Failed to discover VMs in {datacenter}/{folder_path}: {e}")
-                logger.debug(f"📍 Discovery error details:", exc_info=True)
+        finally:
+            connection.disconnect()
 
         if prune_stale:
             self._prune_stale_discovered_vms(config, discovered_vm_names)
 
         return discovered_vm_names
+
+    def _discover_vms_in_folder(self, vm_ops, folder_config, config, manual_vm_names,
+                                discovered_vm_names, vmware_host, vmware_user, vmware_password):
+        """Add VMs found in one datacenter folder to config; returns the number of new VMs."""
+        datacenter = folder_config['datacenter']
+        folder_path = folder_config['folder_path']
+        discovered_count = 0
+        
+        try:
+            logger.info(f"🔍 Discovering VMs in {datacenter}/{folder_path}...")
+            discovered_vms = vm_ops.list_vms_in_folder(datacenter, folder_path)
+            
+            # Add discovered VMs to config (avoid duplicates)
+            for vm_info in discovered_vms:
+                vm_name = vm_info['name']
+                discovered_vm_names.add(vm_name)
+                
+                if vm_name in manual_vm_names:
+                    logger.debug(f"  ℹ️  VM '{vm_name}' already manually configured, skipping")
+                    continue
+                
+                # Create VM configuration entry
+                vm_config = {
+                    'name': vm_name,
+                    'vcenter_host': vmware_host,
+                    'vcenter_user': vmware_user,
+                    'vcenter_password': vmware_password,
+                    'redfish_user': 'admin',  # Default credentials
+                    'redfish_password': 'password',
+                    'discovered': True,
+                    'discovered_from': f"{datacenter}/{folder_path}"
+                }
+                
+                config['vms'].append(vm_config)
+                manual_vm_names.add(vm_name)
+                discovered_count += 1
+                logger.info(f"  ✅ Added discovered VM: {vm_name}")
+            
+            logger.info(f"📊 Discovered {discovered_count} new VMs from {datacenter}/{folder_path}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to discover VMs in {datacenter}/{folder_path}: {e}")
+            logger.debug(f"📍 Discovery error details:", exc_info=True)
+
+        return discovered_count
 
     def _prune_stale_discovered_vms(self, config, active_discovered_vm_names):
         """Remove discovered VM entries that are no longer present in the folder discovery set."""

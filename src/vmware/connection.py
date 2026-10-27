@@ -123,12 +123,20 @@ class VMwareConnection:
     
     def disconnect(self):
         """Disconnect from VMware vSphere"""
+        # Drop the atexit hook so this object can be garbage collected
+        if getattr(self, '_atexit_registered', False):
+            atexit.unregister(self.disconnect)
+            self._atexit_registered = False
+
         try:
             if self.service_instance:
                 Disconnect(self.service_instance)
-                logger.info("Disconnected from VMware")
+                logger.info(f"Disconnected from VMware ({self.host})")
         except Exception as e:
             logger.error(f"Error disconnecting: {e}")
+        finally:
+            self.service_instance = None
+            self.content = None
     
     def is_connected(self):
         """Check if connection is active"""
